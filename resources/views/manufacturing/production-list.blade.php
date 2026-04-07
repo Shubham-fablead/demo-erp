@@ -30,11 +30,12 @@
                                 <th>Total Cost</th>
                                 <th>Status</th>
                                 <th>Date</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="production-table-body">
                             <tr>
-                                <td colspan="8" class="text-center text-muted">Loading productions...</td>
+                                <td colspan="9" class="text-center text-muted">Loading productions...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -61,6 +62,12 @@
                 },
                 success: function(response) {
                     const rows = (response.data || []).map(function(item) {
+                        const editAction = item.status === 'draft'
+                            ? `<a href="/inventory/productions/${item.id}/edit" class="me-3" title="Edit">
+                                    <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
+                               </a>`
+                            : '';
+
                         return `
                             <tr>
                                 <td>${item.production_no}</td>
@@ -71,14 +78,20 @@
                                 <td>${parseFloat(item.total_cost).toFixed(2)}</td>
                                 <td><span class="badges ${item.status === 'completed' ? 'bg-lightgreen' : 'bg-lightyellow'}">${item.status}</span></td>
                                 <td>${item.production_date}</td>
+                                <td>
+                                    ${editAction}
+                                    <a href="/inventory/productions/${item.id}" title="View">
+                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
+                                    </a>
+                                </td>
                             </tr>
                         `;
                     }).join('');
 
-                    $('#production-table-body').html(rows || '<tr><td colspan="8" class="text-center text-muted">No production records found.</td></tr>');
+                    $('#production-table-body').html(rows || '<tr><td colspan="9" class="text-center text-muted">No production records found.</td></tr>');
                 },
                 error: function() {
-                    $('#production-table-body').html('<tr><td colspan="8" class="text-center text-danger">Failed to load production records.</td></tr>');
+                    $('#production-table-body').html('<tr><td colspan="9" class="text-center text-danger">Failed to load production records.</td></tr>');
                 }
             });
         });

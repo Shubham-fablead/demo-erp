@@ -428,8 +428,12 @@ Route::middleware(['auth:web', 'auto.permission'])->group(function () {
     Route::get('/inventory-View/{id}', [InventoryController::class, 'View'])->name('inventory.View');
     Route::get('/inventory/boms', [ManufacturingController::class, 'bomIndex'])->name('inventory.bom.list');
     Route::get('/inventory/boms/create', [ManufacturingController::class, 'bomCreate'])->name('inventory.bom.add');
+    Route::get('/inventory/boms/{id}/view', [ManufacturingController::class, 'bomView'])->whereNumber('id')->name('inventory.bom.view');
+    Route::get('/inventory/boms/{id}/edit', [ManufacturingController::class, 'bomEdit'])->whereNumber('id')->name('inventory.bom.edit');
     Route::get('/inventory/productions', [ManufacturingController::class, 'productionIndex'])->name('inventory.production.list');
     Route::get('/inventory/productions/create', [ManufacturingController::class, 'productionCreate'])->name('inventory.production.add');
+    Route::get('/inventory/productions/{id}/edit', [ManufacturingController::class, 'productionEdit'])->whereNumber('id')->name('inventory.production.edit');
+    Route::get('/inventory/productions/{id}', [ManufacturingController::class, 'productionView'])->whereNumber('id')->name('inventory.production.view');
 
     // Accounting balancesheet =========
     Route::get('/balance-sheet', [BalanceSheetController::class, 'index'])->name('accounting.balance-sheet');

@@ -1,13 +1,22 @@
 @extends('layout.app')
 
-@section('title', 'New Production')
+@php
+    $editId = $id ?? null;
+@endphp
+
+@section('title', $editId ? 'Edit Production' : 'New Production')
 
 @section('content')
     <div class="content">
         <div class="page-header">
             <div class="page-title">
-                <h4>New Production</h4>
+                <h4>{{ $editId ? 'Edit Production' : 'New Production' }}</h4>
                 <h6>Automatic BOM-based material planning and costing</h6>
+            </div>
+            <div class="page-btn">
+                <a href="{{ route('inventory.production.list') }}" class="btn btn-secondary">
+                    <i class="fa fa-arrow-left me-2"></i>Back
+                </a>
             </div>
         </div>
 
@@ -42,8 +51,8 @@
                         <div class="form-group">
                             <label>Status</label>
                             <select id="production_status" class="form-control">
-                                <option value="completed" selected>Completed</option>
-                                <option value="draft">Draft</option>
+                                <option value="completed" {{ $editId ? '' : 'selected' }}>Completed</option>
+                                <option value="draft" {{ $editId ? 'selected' : '' }}>Draft</option>
                             </select>
                         </div>
                     </div>
@@ -147,7 +156,7 @@
                 </div>
 
                 <div class="mt-3">
-                    <button type="button" class="btn btn-submit btn-primary" id="save-production">Save Production</button>
+                    <button type="button" class="btn btn-submit btn-primary" id="save-production">{{ $editId ? 'Update Draft' : 'Save Production' }}</button>
                     <small class="text-muted d-block mt-2" id="production-status-note">Completed production will consume raw materials and update inventory stock.</small>
                 </div>
             </div>
@@ -160,6 +169,8 @@
         $(function() {
             const authToken = localStorage.getItem('authToken');
             const selectedSubAdminId = localStorage.getItem('selectedSubAdminId');
+            const productionId = @json($editId);
+            const isEditMode = !!productionId;
             let currentPreview = null;
 
             function extraCostTotal() {
@@ -183,6 +194,16 @@
                 const status = $('#production_status').val();
                 const isCompleted = status === 'completed';
 
+                if (isEditMode) {
+                    $('#save-production').text(isCompleted ? 'Update And Complete' : 'Update Draft');
+                    $('#production-status-note').text(
+                        isCompleted
+                            ? 'Completing this draft will consume raw materials and update finished stock once.'
+                            : 'Draft production is saved without changing material inventory stock.'
+                    );
+                    return;
+                }
+
                 $('#save-production').text(isCompleted ? 'Save Production' : 'Save Draft');
                 $('#production-status-note').text(
                     isCompleted
@@ -191,7 +212,22 @@
                 );
             }
 
-            function loadProducts() {
+            function fillForm(data) {
+                $('#product_id').val(data.product_id).trigger('change');
+                $('#production_qty').val(data.production_qty);
+                $('#production_date').val(data.production_date || '');
+                $('#production_status').val(data.status || 'draft');
+                $('#labor_cost').val(data.labor_cost || 0);
+                $('#electricity_cost').val(data.electricity_cost || 0);
+                $('#extra_cost').val(data.extra_cost || 0);
+                $('#batch_no').val(data.batch_no || '');
+                $('#expiry_date').val(data.expiry_date || '');
+                $('#notes').val(data.notes || '');
+                syncProductionActionState();
+                fetchPreview();
+            }
+
+            function loadProducts(callback = null) {
                 $.ajax({
                     url: '/api/manufacturing/products',
                     type: 'GET',
@@ -209,6 +245,10 @@
                         });
 
                         $('#product_id').html(options.join(''));
+
+                        if (typeof callback === 'function') {
+                            callback();
+                        }
                     }
                 });
             }
@@ -254,13 +294,40 @@
                 });
             }
 
-            loadProducts();
+            loadProducts(function() {
+                if (isEditMode) {
+                    $.ajax({
+                        url: `/api/manufacturing/productions/${productionId}`,
+                        type: 'GET',
+                        data: {
+                            selectedSubAdminId: selectedSubAdminId
+                        },
+                        headers: {
+                            Authorization: 'Bearer ' + authToken
+                        },
+                        success: function(response) {
+                            const item = response.data;
+                            if (item.status === 'completed') {
+                                Swal.fire('Info', 'Completed production cannot be edited. You can only view it.', 'info').then(function() {
+                                    window.location.href = `/inventory/productions/${productionId}`;
+                                });
+                                return;
+                            }
+                            fillForm(item);
+                        },
+                        error: function(xhr) {
+                            Swal.fire('Error', xhr.responseJSON?.message || 'Failed to load production details.', 'error');
+                        }
+                    });
+                }
+            });
 
             $('#product_id').on('change', function() {
                 $('#product_unit').val($(this).find(':selected').data('unit') || '');
             });
 
             $('#preview-production').on('click', fetchPreview);
+            $('#production_status').on('change', syncProductionActionState);
             $('#labor_cost, #electricity_cost, #extra_cost').on('input', function() {
                 if (currentPreview) {
                     renderSummary(currentPreview);
@@ -269,8 +336,8 @@
 
             $('#save-production').on('click', function() {
                 $.ajax({
-                    url: '/api/manufacturing/productions',
-                    type: 'POST',
+                    url: isEditMode ? `/api/manufacturing/productions/${productionId}` : '/api/manufacturing/productions',
+                    type: isEditMode ? 'PUT' : 'POST',
                     headers: {
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
                         Authorization: 'Bearer ' + authToken
@@ -295,7 +362,7 @@
                         });
                     },
                     error: function(xhr) {
-                        Swal.fire('Error', xhr.responseJSON?.message || 'Failed to save production.', 'error');
+                        Swal.fire('Error', xhr.responseJSON?.message || (isEditMode ? 'Failed to update production.' : 'Failed to save production.'), 'error');
                     }
                 });
             });
@@ -304,4 +371,3 @@
         });
     </script>
 @endpush
-
