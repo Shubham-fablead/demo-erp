@@ -1,13 +1,22 @@
 @extends('layout.app')
 
-@section('title', 'Create BOM')
+@php
+    $editId = $id ?? null;
+@endphp
+
+@section('title', $editId ? 'Edit BOM' : 'Create BOM')
 
 @section('content')
     <div class="content">
         <div class="page-header">
             <div class="page-title">
-                <h4>Create BOM</h4>
-                <h6>Define the raw materials needed for a finished product</h6>
+                <h4>{{ $editId ? 'Edit BOM' : 'Create BOM' }}</h4>
+                <h6>{{ $editId ? 'Update the raw materials needed for a finished product' : 'Define the raw materials needed for a finished product' }}</h6>
+            </div>
+            <div class="page-btn">
+                <a href="{{ route('inventory.bom.list') }}" class="btn btn-secondary">
+                    <i class="fa fa-arrow-left me-2"></i>Back
+                </a>
             </div>
         </div>
 
@@ -74,7 +83,7 @@
                 </div>
 
                 <div class="mt-3">
-                    <button type="button" class="btn btn-submit btn-primary" id="save-bom">Save BOM</button>
+                    <button type="button" class="btn btn-submit btn-primary" id="save-bom">{{ $editId ? 'Update BOM' : 'Save BOM' }}</button>
                 </div>
             </div>
         </div>
@@ -84,6 +93,8 @@
 @push('js')
     <script>
         $(function() {
+            const bomId = @json($editId);
+            const isEditMode = !!bomId;
             const materials = {!! json_encode(array_map(function($m) {
                 return [
                     'id' => $m['id'],
@@ -101,7 +112,7 @@
                 }).join('');
             }
 
-            function addRow() {
+            function addRow(item = null) {
                 $('#bom-item-table').append(`
                     <tr>
                         <td>
@@ -116,11 +127,21 @@
                         <td><button type="button" class="btn btn-danger btn-sm remove-row">Remove</button></td>
                     </tr>
                 `);
+
+                const row = $('#bom-item-table tr:last');
+                if (item) {
+                    row.find('.material-select').val(item.raw_material_id);
+                    row.find('.item-qty').val(item.qty);
+                    row.find('.item-notes').val(item.notes || '');
+                    row.find('.material-select').trigger('change');
+                }
             }
 
             addRow();
 
-            $('#add-material-row').on('click', addRow);
+            $('#add-material-row').on('click', function() {
+                addRow();
+            });
 
             $(document).on('change', '.material-select', function() {
                 const option = $(this).find(':selected');
@@ -151,8 +172,8 @@
                 });
 
                 $.ajax({
-                    url: '/api/manufacturing/boms',
-                    type: 'POST',
+                    url: isEditMode ? `/api/manufacturing/boms/${bomId}` : '/api/manufacturing/boms',
+                    type: isEditMode ? 'PUT' : 'POST',
                     headers: {
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
                         Authorization: 'Bearer ' + authToken
@@ -169,7 +190,7 @@
                     }),
                     success: function(response) {
                         Swal.fire({
-                            title: 'Saved',
+                            title: isEditMode ? 'Updated' : 'Saved',
                             text: response.message,
                             icon: 'success',
                             confirmButtonColor: '#3085d6'
@@ -178,11 +199,48 @@
                         });
                     },
                     error: function(xhr) {
-                        const message = xhr.responseJSON?.message || 'Failed to save BOM.';
+                        const message = xhr.responseJSON?.message || (isEditMode ? 'Failed to update BOM.' : 'Failed to save BOM.');
                         Swal.fire('Error', message, 'error');
                     }
                 });
             });
+
+            if (isEditMode) {
+                $.ajax({
+                    url: `/api/manufacturing/boms/${bomId}`,
+                    type: 'GET',
+                    data: {
+                        selectedSubAdminId: selectedSubAdminId
+                    },
+                    headers: {
+                        Authorization: 'Bearer ' + authToken
+                    },
+                    success: function(response) {
+                        const bom = response.data;
+                        $('#product_id').val(bom.product_id).trigger('change');
+                        $('#base_quantity').val(bom.base_quantity);
+                        $('#wastage_percentage').val(bom.wastage_percentage || 0);
+                        $('#bom_status').val(bom.status);
+                        $('#bom_notes').val(bom.notes || '');
+                        $('#bom-item-table').empty();
+
+                        (bom.items || []).forEach(function(item) {
+                            addRow({
+                                raw_material_id: item.raw_material_id,
+                                qty: item.qty,
+                                notes: item.notes
+                            });
+                        });
+
+                        if (!(bom.items || []).length) {
+                            addRow();
+                        }
+                    },
+                    error: function() {
+                        Swal.fire('Error', 'Failed to load BOM details.', 'error');
+                    }
+                });
+            }
         });
     </script>
 @endpush

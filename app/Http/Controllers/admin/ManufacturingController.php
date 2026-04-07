@@ -46,9 +46,42 @@ class ManufacturingController extends Controller
         return view('manufacturing.bom-create', compact('products', 'materials'));
     }
 
+    public function bomView($id)
+    {
+        return view('manufacturing.bom-view', compact('id'));
+    }
+
+    public function bomEdit($id)
+    {
+        $branchId = $this->resolveBranchId();
+        $products = Product::with('unit')
+            ->where('isDeleted', 0)
+            ->where('branch_id', $branchId)
+            ->orderBy('name')
+            ->get();
+
+        $materials = RowMaterial::with('unit')
+            ->where('isDeleted', 0)
+            ->where('branch_id', $branchId)
+            ->orderBy('row_materialname')
+            ->get();
+
+        return view('manufacturing.bom-create', compact('products', 'materials', 'id'));
+    }
+
     public function productionIndex()
     {
         return view('manufacturing.production-list');
+    }
+
+    public function productionView($id)
+    {
+        return view('manufacturing.production-view', compact('id'));
+    }
+
+    public function productionEdit($id)
+    {
+        return view('manufacturing.production-create', compact('id'));
     }
 
     public function productionCreate()

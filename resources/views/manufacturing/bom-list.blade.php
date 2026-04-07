@@ -28,11 +28,12 @@
                                 <th>Unit</th>
                                 <th>Materials</th>
                                 <th>Status</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="bom-table-body">
                             <tr>
-                                <td colspan="6" class="text-center text-muted">Loading BOMs...</td>
+                                <td colspan="7" class="text-center text-muted">Loading BOMs...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -67,14 +68,22 @@
                                 <td>${bom.product?.unit?.unit_name || '-'}</td>
                                 <td>${bom.items_count || 0}</td>
                                 <td><span class="badges ${bom.status === 'active' ? 'bg-lightgreen' : 'bg-lightred'}">${bom.status}</span></td>
+                                <td>
+                                    <a href="/inventory/boms/${bom.id}/view" class="me-3" title="View">
+                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
+                                    </a>
+                                    <a href="/inventory/boms/${bom.id}/edit" title="Edit">
+                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
+                                    </a>
+                                </td>
                             </tr>
                         `;
                     }).join('');
 
-                    $('#bom-table-body').html(rows || '<tr><td colspan="6" class="text-center text-muted">No BOMs found.</td></tr>');
+                    $('#bom-table-body').html(rows || '<tr><td colspan="7" class="text-center text-muted">No BOMs found.</td></tr>');
                 },
                 error: function() {
-                    $('#bom-table-body').html('<tr><td colspan="6" class="text-center text-danger">Failed to load BOMs.</td></tr>');
+                    $('#bom-table-body').html('<tr><td colspan="7" class="text-center text-danger">Failed to load BOMs.</td></tr>');
                 }
             });
         });

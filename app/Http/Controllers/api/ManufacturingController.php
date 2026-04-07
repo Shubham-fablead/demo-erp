@@ -20,6 +20,22 @@ use Illuminate\Support\Facades\Validator;
 
 class ManufacturingController extends Controller
 {
+    private function validateBomRequest(Request $request)
+    {
+        return Validator::make($request->all(), [
+            'product_id' => 'required|integer|exists:products,id',
+            'base_quantity' => 'required|numeric|gt:0',
+            'wastage_percentage' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'status' => 'required|in:active,inactive',
+            'items' => 'required|array|min:1',
+            'items.*.raw_material_id' => 'required|integer|exists:row_material,id',
+            'items.*.qty' => 'required|numeric|gt:0',
+            'items.*.unit_id' => 'nullable|integer|exists:units,id',
+            'items.*.notes' => 'nullable|string',
+        ]);
+    }
+
     private function resolveBranchId(Request $request): ?int
     {
         $user = Auth::guard('api')->user();
@@ -177,18 +193,7 @@ class ManufacturingController extends Controller
         $branchId = $this->resolveBranchId($request);
         $user = Auth::guard('api')->user();
 
-        $validator = Validator::make($request->all(), [
-            'product_id' => 'required|integer|exists:products,id',
-            'base_quantity' => 'required|numeric|gt:0',
-            'wastage_percentage' => 'nullable|numeric|min:0',
-            'notes' => 'nullable|string',
-            'status' => 'required|in:active,inactive',
-            'items' => 'required|array|min:1',
-            'items.*.raw_material_id' => 'required|integer|exists:row_material,id',
-            'items.*.qty' => 'required|numeric|gt:0',
-            'items.*.unit_id' => 'nullable|integer|exists:units,id',
-            'items.*.notes' => 'nullable|string',
-        ]);
+        $validator = $this->validateBomRequest($request);
 
         if ($validator->fails()) {
             return response()->json([
@@ -237,6 +242,76 @@ class ManufacturingController extends Controller
                 'status' => true,
                 'message' => 'BOM saved successfully.',
                 'data' => $bom->load('items'),
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updateBom(Request $request, $id)
+    {
+        $branchId = $this->resolveBranchId($request);
+        $validator = $this->validateBomRequest($request);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $bom = Bom::where('branch_id', $branchId)->findOrFail($id);
+
+            $bom->update([
+                'product_id' => $request->product_id,
+                'base_quantity' => $request->base_quantity,
+                'wastage_percentage' => $request->wastage_percentage ?? 0,
+                'notes' => $request->notes,
+                'status' => $request->status,
+            ]);
+
+            BomItem::where('bom_id', $bom->id)->delete();
+
+            foreach ($request->items as $item) {
+                $material = RowMaterial::with('unit')->findOrFail($item['raw_material_id']);
+
+                BomItem::create([
+                    'bom_id' => $bom->id,
+                    'raw_material_id' => $item['raw_material_id'],
+                    'qty' => $item['qty'],
+                    'unit_id' => $item['unit_id'] ?? $material->unit_id,
+                    'notes' => $item['notes'] ?? null,
+                ]);
+            }
+
+            if ($request->status === 'active') {
+                Bom::where('product_id', $request->product_id)
+                    ->where('branch_id', $branchId)
+                    ->where('id', '!=', $bom->id)
+                    ->update(['status' => 'inactive']);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'BOM updated successfully.',
+                'data' => $bom->load([
+                    'product:id,name,unit_id',
+                    'product.unit:id,unit_name',
+                    'items.rawMaterial:id,row_materialname,unit_id,price,quantity',
+                    'items.rawMaterial.unit:id,unit_name',
+                    'items.unit:id,unit_name',
+                ]),
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -333,6 +408,26 @@ class ManufacturingController extends Controller
         return response()->json([
             'status' => true,
             'data' => $productions,
+        ]);
+    }
+
+    public function productionDetails(Request $request, $id)
+    {
+        $branchId = $this->resolveBranchId($request);
+
+        $production = Production::with([
+            'product:id,name,unit_id',
+            'product.unit:id,unit_name',
+            'bom:id,bom_code,base_quantity,wastage_percentage,notes',
+            'items.rawMaterial:id,row_materialname,unit_id,price',
+            'items.rawMaterial.unit:id,unit_name',
+        ])
+            ->where('branch_id', $branchId)
+            ->findOrFail($id);
+
+        return response()->json([
+            'status' => true,
+            'data' => $production,
         ]);
     }
 
@@ -480,6 +575,172 @@ class ManufacturingController extends Controller
                 'message' => $request->status === 'completed'
                     ? 'Production completed successfully.'
                     : 'Production draft saved successfully.',
+                'data' => $production->load(['items.rawMaterial', 'product', 'bom']),
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function updateProduction(Request $request, $id)
+    {
+        $branchId = $this->resolveBranchId($request);
+        $user = Auth::guard('api')->user();
+
+        $validator = Validator::make($request->all(), [
+            'product_id' => 'required|integer|exists:products,id',
+            'production_qty' => 'required|numeric|gt:0',
+            'production_date' => 'required|date',
+            'status' => 'required|in:draft,completed',
+            'labor_cost' => 'nullable|numeric|min:0',
+            'electricity_cost' => 'nullable|numeric|min:0',
+            'extra_cost' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'batch_no' => 'nullable|string|max:255',
+            'expiry_date' => 'nullable|date',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $production = Production::with('items')
+            ->where('branch_id', $branchId)
+            ->findOrFail($id);
+
+        if ($production->status === 'completed') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Completed production cannot be edited because inventory is already posted.',
+            ], 422);
+        }
+
+        $bom = Bom::with([
+            'product:id,name,unit_id,quantity,branch_id',
+            'items.rawMaterial:id,row_materialname,unit_id,price,quantity,branch_id,availablility',
+            'items.rawMaterial.unit:id,unit_name',
+            'items.unit:id,unit_name',
+        ])
+            ->where('branch_id', $branchId)
+            ->where('product_id', $request->product_id)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $bom) {
+            return response()->json([
+                'status' => false,
+                'message' => 'No active BOM found for the selected product.',
+            ], 404);
+        }
+
+        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty);
+        $laborCost = round((float) ($request->labor_cost ?? 0), 2);
+        $electricityCost = round((float) ($request->electricity_cost ?? 0), 2);
+        $extraCost = round((float) ($request->extra_cost ?? 0), 2);
+        $totalCost = round($preview['material_cost'] + $laborCost + $electricityCost + $extraCost, 2);
+        $costPerUnit = $preview['output_qty'] > 0 ? round($totalCost / $preview['output_qty'], 4) : 0;
+
+        if ($request->status === 'completed' && ! empty($preview['insufficient_items'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Insufficient stock for: ' . implode(', ', $preview['insufficient_items']),
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $production->update([
+                'product_id' => $request->product_id,
+                'bom_id' => $bom->id,
+                'production_qty' => $preview['production_qty'],
+                'output_qty' => $preview['output_qty'],
+                'wastage_qty' => $preview['wastage_qty'],
+                'wastage_percentage' => $preview['bom']['wastage_percentage'],
+                'extra_cost' => $extraCost,
+                'labor_cost' => $laborCost,
+                'electricity_cost' => $electricityCost,
+                'total_cost' => $totalCost,
+                'cost_per_unit' => $costPerUnit,
+                'production_date' => Carbon::parse($request->production_date)->format('Y-m-d'),
+                'status' => $request->status,
+                'batch_no' => $request->batch_no,
+                'expiry_date' => $request->expiry_date ? Carbon::parse($request->expiry_date)->format('Y-m-d') : null,
+                'notes' => $request->notes,
+            ]);
+
+            ProductionItem::where('production_id', $production->id)->delete();
+
+            foreach ($preview['items'] as $item) {
+                ProductionItem::create([
+                    'production_id' => $production->id,
+                    'raw_material_id' => $item['raw_material_id'],
+                    'required_qty' => $item['required_qty'],
+                    'consume_qty' => $item['consume_qty'],
+                    'rate' => $item['rate'],
+                    'total_cost' => $item['total_cost'],
+                ]);
+            }
+
+            if ($request->status === 'completed') {
+                foreach ($preview['items'] as $item) {
+                    $material = RowMaterial::findOrFail($item['raw_material_id']);
+                    $previousStock = (float) $material->quantity;
+                    $newStock = round($previousStock - $item['consume_qty'], 3);
+
+                    $material->update([
+                        'quantity' => $newStock,
+                        'availablility' => $newStock > 0 ? 'in_stock' : 'out_stock',
+                    ]);
+
+                    RowMaterialInventory::create([
+                        'row_material_id' => $material->id,
+                        'initial_stock' => $previousStock,
+                        'current_stock' => $newStock,
+                        'branch_id' => $branchId,
+                        'create_by' => $user->id,
+                        'type' => 'Production Consume',
+                        'date' => now(),
+                    ]);
+                }
+
+                $product = Product::findOrFail($request->product_id);
+                $previousProductStock = (float) $product->quantity;
+                $newProductStock = round($previousProductStock + $preview['output_qty'], 3);
+
+                $product->update([
+                    'quantity' => $newProductStock,
+                    'availablility' => $newProductStock > 0 ? 'in_stock' : 'out_stock',
+                    'price' => $costPerUnit > 0 ? $costPerUnit : $product->price,
+                ]);
+
+                ProductInventory::create([
+                    'product_id' => $product->id,
+                    'initial_stock' => $previousProductStock,
+                    'current_stock' => $newProductStock,
+                    'branch_id' => $branchId,
+                    'create_by' => $user->id,
+                    'type' => 'Production Output',
+                    'date' => now(),
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => $request->status === 'completed'
+                    ? 'Production updated and completed successfully.'
+                    : 'Production draft updated successfully.',
                 'data' => $production->load(['items.rawMaterial', 'product', 'bom']),
             ]);
         } catch (\Throwable $e) {

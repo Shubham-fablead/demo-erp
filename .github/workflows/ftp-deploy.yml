@@ -28,7 +28,18 @@ jobs:
 
       - name: Clean unwanted folders from build_output
         run: |
+          rm -rf ./build_output/vendor
           rm -rf ./build_output/vendor_old
+          rm -rf ./build_output/system
+          rm -rf ./build_output/node_modules
+          rm -rf ./build_output/storage
+          rm -rf ./build_output/public/upload
+          rm -rf ./build_output/public/uploads
+          rm -rf ./build_output/public/storage
+          rm -rf ./build_output/public/assets/img/
+          rm -rf ./build_output/.git
+          rm -f ./build_output/.gitignore
+          rm -f ./build_output/.gitattributes
 
       - name: Deploy to cPanel via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
@@ -43,4 +54,20 @@ jobs:
           timeout: 600000
           exclude: |
             **/.git*
+            **/.env
+            **/vendor/**
             **/vendor_old/**
+            **/system/**
+            **/node_modules/**
+            **/storage/**
+            **/public/upload/**
+            **/public/uploads/**
+            **/public/storage/**
+            **/public/assets/img/**
+            **/app/Config/App.php
+            **/app/Config/Database.php
+            **/app/Config/Email.php
+            **/app/Config/Paths.php
+            **/app/Config/Encryption.php
+            **/app/Config/Logger.php
+

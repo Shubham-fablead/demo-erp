@@ -359,10 +359,13 @@ Route::middleware(['auth.api'])->group(function () {
     Route::get('/manufacturing/boms', [ManufacturingController::class, 'bomList']);
     Route::get('/manufacturing/boms/{id}', [ManufacturingController::class, 'bomDetails']);
     Route::post('/manufacturing/boms', [ManufacturingController::class, 'storeBom']);
+    Route::put('/manufacturing/boms/{id}', [ManufacturingController::class, 'updateBom']);
     Route::get('/manufacturing/bom-for-product/{productId}', [ManufacturingController::class, 'bomForProduct']);
     Route::post('/manufacturing/production-preview', [ManufacturingController::class, 'productionPreview']);
     Route::get('/manufacturing/productions', [ManufacturingController::class, 'productionList']);
+    Route::get('/manufacturing/productions/{id}', [ManufacturingController::class, 'productionDetails']);
     Route::post('/manufacturing/productions', [ManufacturingController::class, 'storeProduction']);
+    Route::put('/manufacturing/productions/{id}', [ManufacturingController::class, 'updateProduction']);
 
     Route::get('/sales/payment-history/{id}', [SalesController::class, 'getHistory'])->name('sales.payment_history');
     Route::post('/sales/make-payment', [SalesController::class, 'makePaymentSubmit'])->name('sales.make_payment_submit');

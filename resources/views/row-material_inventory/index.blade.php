@@ -418,15 +418,37 @@
         }
 
         /* Custom Pagination Styling */
+        .pagination {
+            gap: 8px;
+        }
+
+        .pagination .page-item {
+            margin: 0;
+        }
+
         .pagination .page-item .page-link {
             background-color: #5d6d7e;
             /* Dark gray for other pages */
             color: #fff;
             border: none;
-            margin: 0 4px;
+            margin: 0;
             padding: 6px 15px;
             border-radius: 6px;
             font-weight: bold;
+        }
+
+        .pagination .page-item.disabled .page-link {
+            background-color: #d7dce1;
+            color: #7a8794;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .pagination .page-item.ellipsis .page-link {
+            background-color: transparent;
+            color: #5d6d7e;
+            pointer-events: none;
+            padding: 6px 4px;
         }
 
         .pagination .page-item.active .page-link {
@@ -1574,6 +1596,8 @@
 
                             // Build table rows
                             let tableBody = [];
+                            const rowStart = ((pagination.current_page - 1) * pagination.per_page) + 1;
+
                             products.forEach((product, index) => {
                                 let productName = capitalizeWords(product.product_name ||
                                 'N/A');
@@ -1615,7 +1639,7 @@
                             `;
 
                                 tableBody.push([
-                                    index + 1,
+                                    rowStart + index,
                                     productName, // Product Name
                                     detailsColumn, // Details (toggle button)
                                     sku,
@@ -1661,14 +1685,67 @@
                 $('#pagination-total').text(pagination.total);
 
                 let paginationHtml = '';
-                let startPage = Math.max(1, pagination.current_page - 2);
-                let endPage = Math.min(pagination.last_page, startPage + 4);
-                if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+                const totalPages = pagination.last_page;
+                const currentPage = pagination.current_page;
+                let pagesToShow = [];
 
-                for (let i = startPage; i <= endPage; i++) {
+                if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) {
+                        pagesToShow.push(i);
+                    }
+                } else {
+                    pagesToShow = [1];
+
+                    if (currentPage > 4) {
+                        pagesToShow.push('ellipsis-start');
+                    }
+
+                    const middleStart = Math.max(2, currentPage - 1);
+                    const middleEnd = Math.min(totalPages - 1, currentPage + 1);
+
+                    for (let i = middleStart; i <= middleEnd; i++) {
+                        if (!pagesToShow.includes(i)) {
+                            pagesToShow.push(i);
+                        }
+                    }
+
+                    if (currentPage < totalPages - 3) {
+                        pagesToShow.push('ellipsis-end');
+                    }
+
+                    if (!pagesToShow.includes(totalPages)) {
+                        pagesToShow.push(totalPages);
+                    }
+                }
+
+                if (totalPages > 1) {
                     paginationHtml += `
-                    <li class="page-item ${i === pagination.current_page ? 'active' : ''}">
-                        <a class="page-link" href="javascript:void(0);" data-page="${i}">${i}</a>
+                    <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                        <a class="page-link" href="javascript:void(0);" data-page="${currentPage - 1}">Prev</a>
+                    </li>
+                `;
+                }
+
+                pagesToShow.forEach((page) => {
+                    if (typeof page === 'string') {
+                        paginationHtml += `
+                        <li class="page-item ellipsis">
+                            <span class="page-link">...</span>
+                        </li>
+                    `;
+                    } else {
+                        paginationHtml += `
+                        <li class="page-item ${page === currentPage ? 'active' : ''}">
+                            <a class="page-link" href="javascript:void(0);" data-page="${page}">${page}</a>
+                        </li>
+                    `;
+                    }
+                });
+
+                if (totalPages > 1) {
+                    paginationHtml += `
+                    <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                        <a class="page-link" href="javascript:void(0);" data-page="${currentPage + 1}">Next</a>
                     </li>
                 `;
                 }
