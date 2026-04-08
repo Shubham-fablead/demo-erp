@@ -54,6 +54,7 @@ use App\Http\Controllers\SmtpSettingController;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 
 /*
@@ -88,6 +89,12 @@ Route::middleware(['guest:web'])->group(function () {
 });
 
 Route::post('/', [LoginController::class, 'login'])->name('login');
+
+Route::get('/storage/{path}', function (string $path) {
+    abort_unless(Storage::disk('public')->exists($path), 404);
+
+    return response()->file(Storage::disk('public')->path($path));
+})->where('path', '.*');
 
 Route::middleware(['auth:web', 'auto.permission'])->group(function () {
     Route::get('/logout', [LoginController::class, 'logout'])->name('logout');
@@ -278,6 +285,8 @@ Route::middleware(['auth:web', 'auto.permission'])->group(function () {
     Route::get('/row-material-purchase-list', [PurchaseController::class, 'row_material_purchase_list'])->name('purchase.row_material.lists');
     Route::get('/add-purchase', [PurchaseController::class, 'add_purchase'])->name('purchase.add');
     Route::get('/add-row-material-purchase', [PurchaseController::class, 'add_row_material_purchase'])->name('purchase.row_material.add');
+    Route::get('/view-row-material-purchase/{id}', [PurchaseController::class, 'view_row_material_purchase'])->name('purchase.row_material.view');
+    Route::get('/edit-row-material-purchase/{id}', [PurchaseController::class, 'edit_row_material_purchase'])->name('purchase.row_material.edit');
     Route::get('/edit-purchase/{num}', [PurchaseController::class, 'edit_purchase'])->name('purchase.edit');
     Route::get('/purchase-invoice', [PurchaseController::class, 'purchase_invoice'])->name('purchase.invoice');
     Route::get('/print-purchase/{id}', [PurchaseController::class, 'printPurchase'])->name('purchase.print');

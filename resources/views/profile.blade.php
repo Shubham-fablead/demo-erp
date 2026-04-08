@@ -50,13 +50,8 @@
                         <div class="profile-top">
                             <div class="profile-content">
                                 <div class="profile-contentimg">
-                                    @if (isset($user->profile_image))
-                                        <img src="{{ env('ImagePath') . 'storage/' . $user->profile_image }}" alt="img"
-                                            id="blah">
-                                    @else
-                                        <img src="{{ env('ImagePath') . 'admin/assets/img/customer/customer5.jpg' }}"
-                                            alt="img" id="blah">
-                                    @endif
+                                    <img src="{{ !empty($user->profile_image) ? $user->profile_image_url : asset('admin/assets/img/customer/customer5.jpg') }}"
+                                        alt="img" id="blah">
 
                                     <div class="profileupload">
                                         <input type="file" name="profile_image" id="imgInp" accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,image/*">

@@ -246,6 +246,9 @@ Route::middleware(['auth.api'])->group(function () {
     Route::post('/purchase_order', [PurchaseController::class, 'purchase_order'])->name('purchase_order');
     Route::post('/row-material-purchase_order', [PurchaseController::class, 'row_material_purchase_order'])->name('row_material_purchase_order');
     Route::get('/row-material-purchase-list', [PurchaseController::class, 'row_material_purchase_list'])->name('row_material_purchase_list');
+    Route::get('/row-material-purchase/{id}', [PurchaseController::class, 'showRowMaterialPurchase'])->name('row_material_purchase_get');
+    Route::put('/row-material-purchase/{id}', [PurchaseController::class, 'updateRowMaterialPurchase'])->name('row_material_purchase_update');
+    Route::delete('/row-material-purchase/{id}', [PurchaseController::class, 'deleteRowMaterialPurchase'])->name('row_material_purchase_delete');
     Route::get('/purchase_list', [PurchaseController::class, 'purchase_list'])->name('purchase_list');
     Route::post('/purchase_delete', [PurchaseController::class, 'purchase_delete'])->name('purchase_delete');
     Route::get('/purchase_get/{id}', [PurchaseController::class, 'showPurchase'])->name('purchase_get');
@@ -360,12 +363,14 @@ Route::middleware(['auth.api'])->group(function () {
     Route::get('/manufacturing/boms/{id}', [ManufacturingController::class, 'bomDetails']);
     Route::post('/manufacturing/boms', [ManufacturingController::class, 'storeBom']);
     Route::put('/manufacturing/boms/{id}', [ManufacturingController::class, 'updateBom']);
+    Route::delete('/manufacturing/boms/{id}', [ManufacturingController::class, 'deleteBom']);
     Route::get('/manufacturing/bom-for-product/{productId}', [ManufacturingController::class, 'bomForProduct']);
     Route::post('/manufacturing/production-preview', [ManufacturingController::class, 'productionPreview']);
     Route::get('/manufacturing/productions', [ManufacturingController::class, 'productionList']);
     Route::get('/manufacturing/productions/{id}', [ManufacturingController::class, 'productionDetails']);
     Route::post('/manufacturing/productions', [ManufacturingController::class, 'storeProduction']);
     Route::put('/manufacturing/productions/{id}', [ManufacturingController::class, 'updateProduction']);
+    Route::delete('/manufacturing/productions/{id}', [ManufacturingController::class, 'deleteProduction']);
 
     Route::get('/sales/payment-history/{id}', [SalesController::class, 'getHistory'])->name('sales.payment_history');
     Route::post('/sales/make-payment', [SalesController::class, 'makePaymentSubmit'])->name('sales.make_payment_submit');

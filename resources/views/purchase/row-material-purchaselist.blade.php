@@ -36,11 +36,12 @@
                                 <th>Purchase Status</th>
                                 <th>Payment Status</th>
                                 <th>Date</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="row-material-purchase-table-body">
                             <tr>
-                                <td colspan="9" class="text-center text-muted">Loading row material purchases...</td>
+                                <td colspan="10" class="text-center text-muted">Loading row material purchases...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -103,11 +104,22 @@
                                     <td>${statusBadge(item.purchase_status)}</td>
                                     <td>${statusBadge(item.payment_status)}</td>
                                     <td>${item.date || '-'}</td>
+                                    <td>
+                                        <a href="/view-row-material-purchase/${item.id}" class="me-2" title="View">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
+                                        </a>
+                                        <a href="/edit-row-material-purchase/${item.id}" class="me-2" title="Edit">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
+                                        </a>
+                                        <a href="javascript:void(0);" class="delete-row-material-purchase" data-id="${item.id}" title="Delete">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/delete.svg' }}" alt="delete">
+                                        </a>
+                                    </td>
                                 </tr>
                             `;
                         }).join('');
 
-                        $('#row-material-purchase-table-body').html(rows || '<tr><td colspan="9" class="text-center text-muted">No row material purchases found.</td></tr>');
+                        $('#row-material-purchase-table-body').html(rows || '<tr><td colspan="10" class="text-center text-muted">No row material purchases found.</td></tr>');
 
                         currentPage = response.pagination?.current_page || 1;
                         lastPage = response.pagination?.last_page || 1;
@@ -116,10 +128,45 @@
                         $('#next-page').prop('disabled', currentPage >= lastPage);
                     },
                     error: function() {
-                        $('#row-material-purchase-table-body').html('<tr><td colspan="9" class="text-center text-danger">Failed to load row material purchases.</td></tr>');
+                        $('#row-material-purchase-table-body').html('<tr><td colspan="10" class="text-center text-danger">Failed to load row material purchases.</td></tr>');
                     }
                 });
             }
+
+            $(document).on('click', '.delete-row-material-purchase', function() {
+                const purchaseId = $(this).data('id');
+
+                Swal.fire({
+                    title: 'Delete row material purchase?',
+                    text: 'This will reverse the purchased stock if it has not already been consumed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, delete it',
+                    cancelButtonText: 'Cancel'
+                }).then(function(result) {
+                    if (!result.isConfirmed) {
+                        return;
+                    }
+
+                    $.ajax({
+                        url: `/api/row-material-purchase/${purchaseId}`,
+                        type: 'DELETE',
+                        data: {
+                            selectedSubAdminId: selectedSubAdminId
+                        },
+                        headers: {
+                            Authorization: 'Bearer ' + authToken
+                        },
+                        success: function(response) {
+                            Swal.fire('Deleted', response.message || 'Row material purchase deleted successfully.', 'success');
+                            loadRowMaterialPurchases();
+                        },
+                        error: function(xhr) {
+                            Swal.fire('Error', xhr.responseJSON?.message || 'Failed to delete row material purchase.', 'error');
+                        }
+                    });
+                });
+            });
 
             $('#search-input').on('input', function() {
                 currentPage = 1;

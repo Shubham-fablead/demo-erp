@@ -352,6 +352,41 @@ class ManufacturingController extends Controller
         ]);
     }
 
+    public function deleteBom(Request $request, $id)
+    {
+        $branchId = $this->resolveBranchId($request);
+
+        $bom = Bom::where('branch_id', $branchId)->findOrFail($id);
+
+        if (Production::where('branch_id', $branchId)->where('bom_id', $bom->id)->exists()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This BOM is already used in production and cannot be deleted.',
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            BomItem::where('bom_id', $bom->id)->delete();
+            $bom->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'BOM deleted successfully.',
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function productionPreview(Request $request)
     {
         $branchId = $this->resolveBranchId($request);
@@ -742,6 +777,41 @@ class ManufacturingController extends Controller
                     ? 'Production updated and completed successfully.'
                     : 'Production draft updated successfully.',
                 'data' => $production->load(['items.rawMaterial', 'product', 'bom']),
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function deleteProduction(Request $request, $id)
+    {
+        $branchId = $this->resolveBranchId($request);
+
+        $production = Production::where('branch_id', $branchId)->findOrFail($id);
+
+        if ($production->status === 'completed') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Completed production cannot be deleted because inventory is already posted.',
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            ProductionItem::where('production_id', $production->id)->delete();
+            $production->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Production deleted successfully.',
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();

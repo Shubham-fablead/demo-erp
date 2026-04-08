@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 // use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\HasApiTokens;
 
 class User extends Authenticatable
@@ -66,14 +67,12 @@ class User extends Authenticatable
     }
     public function getProfileImageUrlAttribute()
     {
-        $basePath = env('ImagePath', '/'); // default "/" if not set
-
-        if ($this->profile_image) {
-            return url($basePath . 'storage/' . $this->profile_image);
+        if (!empty($this->profile_image)) {
+            return asset(Storage::url($this->profile_image));
         }
 
         // fallback image
-        return url($basePath . 'admin/assets/img/customer/customer5.jpg');
+        return asset('admin/assets/img/customer/customer5.jpg');
     }
     // User.php
     public function permissions()

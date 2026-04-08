@@ -49,43 +49,85 @@
             const authToken = localStorage.getItem('authToken');
             const selectedSubAdminId = localStorage.getItem('selectedSubAdminId');
 
-            $.ajax({
-                url: '/api/manufacturing/boms',
-                type: 'GET',
-                data: {
-                    selectedSubAdminId: selectedSubAdminId
-                },
-                headers: {
-                    Authorization: 'Bearer ' + authToken
-                },
-                success: function(response) {
-                    const rows = (response.data || []).map(function(bom) {
-                        return `
-                            <tr>
-                                <td>${bom.bom_code}</td>
-                                <td>${bom.product?.name || 'N/A'}</td>
-                                <td>${parseFloat(bom.base_quantity).toFixed(3)}</td>
-                                <td>${bom.product?.unit?.unit_name || '-'}</td>
-                                <td>${bom.items_count || 0}</td>
-                                <td><span class="badges ${bom.status === 'active' ? 'bg-lightgreen' : 'bg-lightred'}">${bom.status}</span></td>
-                                <td>
-                                    <a href="/inventory/boms/${bom.id}/view" class="me-3" title="View">
-                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
-                                    </a>
-                                    <a href="/inventory/boms/${bom.id}/edit" title="Edit">
-                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
-                                    </a>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
+            function loadBoms() {
+                $.ajax({
+                    url: '/api/manufacturing/boms',
+                    type: 'GET',
+                    data: {
+                        selectedSubAdminId: selectedSubAdminId
+                    },
+                    headers: {
+                        Authorization: 'Bearer ' + authToken
+                    },
+                    success: function(response) {
+                        const rows = (response.data || []).map(function(bom) {
+                            return `
+                                <tr>
+                                    <td>${bom.bom_code}</td>
+                                    <td>${bom.product?.name || 'N/A'}</td>
+                                    <td>${parseFloat(bom.base_quantity).toFixed(3)}</td>
+                                    <td>${bom.product?.unit?.unit_name || '-'}</td>
+                                    <td>${bom.items_count || 0}</td>
+                                    <td><span class="badges ${bom.status === 'active' ? 'bg-lightgreen' : 'bg-lightred'}">${bom.status}</span></td>
+                                    <td>
+                                        <a href="/inventory/boms/${bom.id}/view" class="me-3" title="View">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
+                                        </a>
+                                        <a href="/inventory/boms/${bom.id}/edit" class="me-3" title="Edit">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
+                                        </a>
+                                        <a href="javascript:void(0);" class="delete-bom" data-id="${bom.id}" title="Delete">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/delete.svg' }}" alt="delete">
+                                        </a>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
 
-                    $('#bom-table-body').html(rows || '<tr><td colspan="7" class="text-center text-muted">No BOMs found.</td></tr>');
-                },
-                error: function() {
-                    $('#bom-table-body').html('<tr><td colspan="7" class="text-center text-danger">Failed to load BOMs.</td></tr>');
-                }
+                        $('#bom-table-body').html(rows || '<tr><td colspan="7" class="text-center text-muted">No BOMs found.</td></tr>');
+                    },
+                    error: function() {
+                        $('#bom-table-body').html('<tr><td colspan="7" class="text-center text-danger">Failed to load BOMs.</td></tr>');
+                    }
+                });
+            }
+
+            $(document).on('click', '.delete-bom', function() {
+                const bomId = $(this).data('id');
+
+                Swal.fire({
+                    title: 'Delete BOM?',
+                    text: 'This will permanently remove the BOM if it has not been used in production.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, delete it',
+                    cancelButtonText: 'Cancel'
+                }).then(function(result) {
+                    if (!result.isConfirmed) {
+                        return;
+                    }
+
+                    $.ajax({
+                        url: `/api/manufacturing/boms/${bomId}`,
+                        type: 'DELETE',
+                        data: {
+                            selectedSubAdminId: selectedSubAdminId
+                        },
+                        headers: {
+                            Authorization: 'Bearer ' + authToken
+                        },
+                        success: function(response) {
+                            Swal.fire('Deleted', response.message || 'BOM deleted successfully.', 'success');
+                            loadBoms();
+                        },
+                        error: function(xhr) {
+                            Swal.fire('Error', xhr.responseJSON?.message || 'Failed to delete BOM.', 'error');
+                        }
+                    });
+                });
             });
+
+            loadBoms();
         });
     </script>
 @endpush
