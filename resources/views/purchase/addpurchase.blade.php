@@ -2,8 +2,12 @@
 
 @php
     $purchaseType = $purchaseType ?? 'product';
+    $editPurchaseId = $editPurchaseId ?? null;
+    $isEditPurchase = !empty($editPurchaseId);
     $isRowMaterialPurchase = $purchaseType === 'row-material';
-    $pageTitle = $isRowMaterialPurchase ? 'Add Row Material Purchase' : 'Add Purchase';
+    $pageTitle = $isRowMaterialPurchase
+        ? ($isEditPurchase ? 'Edit Row Material Purchase' : 'Add Row Material Purchase')
+        : 'Add Purchase';
     $itemLabel = $isRowMaterialPurchase ? 'Row Material Name' : 'Product Name';
     $itemPriceLabel = $isRowMaterialPurchase ? 'Row Material Price' : 'Product Price';
     $totalItemLabel = $isRowMaterialPurchase ? 'Total Row Material Amount' : 'Total Product Amount';
@@ -545,8 +549,8 @@
                     </div>
                 </div>
                 <div class="col-lg-12">
-                    <a href="javascript:void(0);" class="btn btn-submit me-2">Submit</a>
-                    <a href="{{ route('purchase.lists') }}" class="btn btn-cancel">Cancel</a>
+                    <a href="javascript:void(0);" class="btn btn-submit me-2">{{ $isEditPurchase ? 'Update' : 'Submit' }}</a>
+                    <a href="{{ $isRowMaterialPurchase ? route('purchase.row_material.lists') : route('purchase.lists') }}" class="btn btn-cancel">Cancel</a>
                 </div>
             </div>
         </div>
@@ -558,6 +562,8 @@
         const products = @json($itemOptions);
         const rowMaterials = @json($rowMaterialsArray ?? []);
         const isRowMaterialPurchase = @json($isRowMaterialPurchase);
+        const isEditPurchase = @json($isEditPurchase);
+        const editPurchaseId = @json($editPurchaseId);
         const purchaseSubmitUrl = @json($purchaseSubmitUrl);
         const purchaseRedirectUrl = @json($purchaseRedirectUrl);
     </script>
@@ -588,6 +594,90 @@
             //     tags: true,
             // });
             let invalid = false;
+
+            function setRowMaterialPurchaseRow($row, item) {
+                $row.find('.category-select').val(item.category_id || '').trigger('change');
+                $row.find('.product-select').prop('disabled', false).val(item.row_material_id || '').trigger('change');
+                $row.find('.price-input').val(item.price || '');
+                $row.find('.quantity-input').val(item.quantity || 1);
+                $row.find('.product-discount-input').val(item.discount_percent || 0);
+                $row.find('.product-discount-amount-input').val(item.discount_amount || 0);
+                $row.find('.total-input').val(item.amount_total || 0);
+            }
+
+            function populateRowMaterialPurchaseForm(data) {
+                const invoice = data.invoice || {};
+                const vendor = data.vendor || {};
+                const items = data.items || [];
+                const grandTotal = parseFloat(invoice.grand_total || 0);
+                const remainingAmount = parseFloat(invoice.remaining_amount || 0);
+                const paidAmount = Math.max(grandTotal - remainingAmount, 0);
+
+                $('#vendor_name').val(invoice.vendor_id || vendor.id || '').trigger('change');
+                $('#vendor_phone').val(vendor.phone || '');
+                $('#bill_no').val(invoice.bill_no || '');
+                $('#shipping').val(invoice.shipping || 0);
+                $('select[name="status"]').val(invoice.status || 'pending').trigger('change');
+                $('input[name="gst_option"][value="' + (invoice.gst_option === 'with_gst' ? 'with' : 'without') + '"]').prop('checked', true).trigger('change');
+
+                $('#form-container').empty();
+
+                if (items.length) {
+                    setRowMaterialPurchaseRow($('.form-row').first(), items[0]);
+
+                    items.slice(1).forEach(function(item) {
+                        $('.add-row').first().trigger('click');
+                        setRowMaterialPurchaseRow($('#form-container .form-row').last(), item);
+                    });
+                }
+
+                if ((data.payment_status || '').toLowerCase() === 'completed') {
+                    $('#payment_mode').val('cash').trigger('change');
+                    $('#paid_type').val('full').trigger('change');
+                    $('#amount_input').val(grandTotal.toFixed(2));
+                    $('#pending_amount').val('0.00');
+                } else if ((data.payment_status || '').toLowerCase() === 'partially') {
+                    $('#payment_mode').val('cash').trigger('change');
+                    $('#paid_type').val('partial').trigger('change');
+                    $('#amount_input').val(paidAmount.toFixed(2));
+                    $('#pending_amount').val(remainingAmount.toFixed(2));
+                } else {
+                    $('#payment_mode').val('pending').trigger('change');
+                    $('#pending_amount').val(remainingAmount.toFixed(2));
+                }
+
+                setTimeout(function() {
+                    calculateTotal();
+                }, 0);
+            }
+
+            if (isRowMaterialPurchase && isEditPurchase && editPurchaseId) {
+                $.ajax({
+                    url: `/api/row-material-purchase/${editPurchaseId}`,
+                    type: 'GET',
+                    headers: {
+                        "Authorization": "Bearer " + authToken,
+                    },
+                    data: {
+                        selectedSubAdminId: localStorage.getItem("selectedSubAdminId")
+                    },
+                    success: function(response) {
+                        if (response.success && response.data) {
+                            populateRowMaterialPurchaseForm(response.data);
+                        }
+                    },
+                    error: function(xhr) {
+                        Swal.fire({
+                            title: "Error",
+                            text: xhr.responseJSON?.message || "Failed to load row material purchase.",
+                            icon: "error",
+                            confirmButtonText: "OK"
+                        }).then(() => {
+                            window.location.href = purchaseRedirectUrl;
+                        });
+                    }
+                });
+            }
 
             $('#upi_amount_input').on('keyup input', function() {
                 let value = parseIndianNumber($(this).val());
@@ -1685,8 +1775,8 @@
                 let remaining_amount = $("#pending_amount").val();
 
                 $.ajax({
-                    url: purchaseSubmitUrl,
-                    type: "POST",
+                    url: isEditPurchase && isRowMaterialPurchase ? `/api/row-material-purchase/${editPurchaseId}` : purchaseSubmitUrl,
+                    type: isEditPurchase && isRowMaterialPurchase ? "PUT" : "POST",
                     headers: {
                         'X-CSRF-TOKEN': "{{ csrf_token() }}",
                         "Authorization": "Bearer " + authToken,
@@ -1726,13 +1816,13 @@
                                 confirmButtonColor: "#ff9f43" // Set custom button color
                             }).then((result) => {
                                 if (result.isConfirmed) {
-                                    // Open the PDF in a new tab
-                                    window.open("/purchase/invoice/pdf/" + purchaseId,
-                                        "_blank");
-
-                                    if (isRowMaterialPurchase) {
+                                    if (isEditPurchase && isRowMaterialPurchase) {
+                                        window.location.href = purchaseRedirectUrl;
+                                    } else if (isRowMaterialPurchase) {
                                         window.location.href = purchaseRedirectUrl;
                                     } else {
+                                        window.open("/purchase/invoice/pdf/" + purchaseId,
+                                            "_blank");
                                         window.location.href = purchaseRedirectUrl + purchaseId;
                                     }
                                 }

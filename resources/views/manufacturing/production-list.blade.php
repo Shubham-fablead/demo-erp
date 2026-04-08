@@ -51,49 +51,94 @@
             const authToken = localStorage.getItem('authToken');
             const selectedSubAdminId = localStorage.getItem('selectedSubAdminId');
 
-            $.ajax({
-                url: '/api/manufacturing/productions',
-                type: 'GET',
-                data: {
-                    selectedSubAdminId: selectedSubAdminId
-                },
-                headers: {
-                    Authorization: 'Bearer ' + authToken
-                },
-                success: function(response) {
-                    const rows = (response.data || []).map(function(item) {
-                        const editAction = item.status === 'draft'
-                            ? `<a href="/inventory/productions/${item.id}/edit" class="me-3" title="Edit">
-                                    <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
-                               </a>`
-                            : '';
+            function loadProductions() {
+                $.ajax({
+                    url: '/api/manufacturing/productions',
+                    type: 'GET',
+                    data: {
+                        selectedSubAdminId: selectedSubAdminId
+                    },
+                    headers: {
+                        Authorization: 'Bearer ' + authToken
+                    },
+                    success: function(response) {
+                        const rows = (response.data || []).map(function(item) {
+                            const editAction = item.status === 'draft'
+                                ? `<a href="/inventory/productions/${item.id}/edit" class="me-3" title="Edit">
+                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
+                                   </a>`
+                                : '';
+                            const deleteAction = item.status === 'draft'
+                                ? `<a href="javascript:void(0);" class="delete-production me-3" data-id="${item.id}" title="Delete">
+                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/delete.svg' }}" alt="delete">
+                                   </a>`
+                                : '';
 
-                        return `
-                            <tr>
-                                <td>${item.production_no}</td>
-                                <td>${item.product?.name || 'N/A'}</td>
-                                <td>${item.bom?.bom_code || '-'}</td>
-                                <td>${parseFloat(item.production_qty).toFixed(3)} ${item.product?.unit?.unit_name || ''}</td>
-                                <td>${parseFloat(item.output_qty).toFixed(3)} ${item.product?.unit?.unit_name || ''}</td>
-                                <td>${parseFloat(item.total_cost).toFixed(2)}</td>
-                                <td><span class="badges ${item.status === 'completed' ? 'bg-lightgreen' : 'bg-lightyellow'}">${item.status}</span></td>
-                                <td>${item.production_date}</td>
-                                <td>
-                                    ${editAction}
-                                    <a href="/inventory/productions/${item.id}" title="View">
-                                        <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
-                                    </a>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
+                            return `
+                                <tr>
+                                    <td>${item.production_no}</td>
+                                    <td>${item.product?.name || 'N/A'}</td>
+                                    <td>${item.bom?.bom_code || '-'}</td>
+                                    <td>${parseFloat(item.production_qty).toFixed(3)} ${item.product?.unit?.unit_name || ''}</td>
+                                    <td>${parseFloat(item.output_qty).toFixed(3)} ${item.product?.unit?.unit_name || ''}</td>
+                                    <td>${parseFloat(item.total_cost).toFixed(2)}</td>
+                                    <td><span class="badges ${item.status === 'completed' ? 'bg-lightgreen' : 'bg-lightyellow'}">${item.status}</span></td>
+                                    <td>${item.production_date}</td>
+                                    <td>
+                                        ${editAction}
+                                        ${deleteAction}
+                                        <a href="/inventory/productions/${item.id}" title="View">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/eye.svg' }}" alt="view">
+                                        </a>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
 
-                    $('#production-table-body').html(rows || '<tr><td colspan="9" class="text-center text-muted">No production records found.</td></tr>');
-                },
-                error: function() {
-                    $('#production-table-body').html('<tr><td colspan="9" class="text-center text-danger">Failed to load production records.</td></tr>');
-                }
+                        $('#production-table-body').html(rows || '<tr><td colspan="9" class="text-center text-muted">No production records found.</td></tr>');
+                    },
+                    error: function() {
+                        $('#production-table-body').html('<tr><td colspan="9" class="text-center text-danger">Failed to load production records.</td></tr>');
+                    }
+                });
+            }
+
+            $(document).on('click', '.delete-production', function() {
+                const productionId = $(this).data('id');
+
+                Swal.fire({
+                    title: 'Delete production?',
+                    text: 'This will permanently remove the draft production record.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, delete it',
+                    cancelButtonText: 'Cancel'
+                }).then(function(result) {
+                    if (!result.isConfirmed) {
+                        return;
+                    }
+
+                    $.ajax({
+                        url: `/api/manufacturing/productions/${productionId}`,
+                        type: 'DELETE',
+                        data: {
+                            selectedSubAdminId: selectedSubAdminId
+                        },
+                        headers: {
+                            Authorization: 'Bearer ' + authToken
+                        },
+                        success: function(response) {
+                            Swal.fire('Deleted', response.message || 'Production deleted successfully.', 'success');
+                            loadProductions();
+                        },
+                        error: function(xhr) {
+                            Swal.fire('Error', xhr.responseJSON?.message || 'Failed to delete production.', 'error');
+                        }
+                    });
+                });
             });
+
+            loadProductions();
         });
     </script>
 @endpush

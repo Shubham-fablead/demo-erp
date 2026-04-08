@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\PaymentStore;
 use App\Models\Product;
 use App\Models\RowMaterial;
+use App\Models\RowMaterialPurchaseInvoice;
 use App\Models\PurchaseInvoice;
 use App\Models\Purchases;
 use App\Models\Setting;
@@ -164,6 +165,36 @@ class PurchaseController extends Controller
     public function row_material_purchase_list(Request $request)
     {
         return view('purchase.row-material-purchaselist');
+    }
+
+    public function view_row_material_purchase(Request $request, $id)
+    {
+        return view('purchase.row-material-purchase-view', compact('id'));
+    }
+
+    public function edit_row_material_purchase(Request $request, $id)
+    {
+        $user      = Auth::user();
+        $branch_id = $user->id;
+
+        $selectedSubAdminId = session('selectedSubAdminId');
+
+        if ($user->role === 'staff' && $user->branch_id) {
+            $branch_id = $user->branch_id;
+        } elseif ($user->role === 'admin' && ! empty($selectedSubAdminId)) {
+            $branch_id = $selectedSubAdminId;
+        }
+
+        $invoice = RowMaterialPurchaseInvoice::where('id', $id)
+            ->where('branch_id', $branch_id)
+            ->where('isDeleted', 0)
+            ->firstOrFail();
+
+        $data = $this->getPurchaseFormData($branch_id);
+        $data['purchaseType'] = 'row-material';
+        $data['editPurchaseId'] = $invoice->id;
+
+        return view('purchase.addpurchase', $data);
     }
     public function edit_purchase(Request $request)
     {

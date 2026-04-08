@@ -4,6 +4,7 @@ namespace App\Models;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
     class Setting extends Model
     {
@@ -44,30 +45,27 @@ use Illuminate\Database\Eloquent\Model;
     // ✅ Full logo path
     public function getLogoUrlAttribute()
     {
-        $basePath = env('ImagePath', '/');
-        if ($this->logo) {
-            return url($basePath . 'storage/' . $this->logo);
+        if (!empty($this->logo)) {
+            return asset(Storage::url($this->logo));
         }
-        return url($basePath . 'admin/assets/img/no-logo.png'); // fallback
+        return asset('admin/assets/img/no-logo.png'); // fallback
     }
 
     // ✅ Favicon URL
     public function getFaviconUrlAttribute()
     {
-        $basePath = env('ImagePath', '/');
-        if ($this->favicon) {
-            return url($basePath . 'storage/' . $this->favicon);
+        if (!empty($this->favicon)) {
+            return asset(Storage::url($this->favicon));
         }
-        return url($basePath . 'admin/assets/img/no-favicon.png'); // fallback
+        return asset('admin/assets/img/no-favicon.png'); // fallback
     }
 
     public function getQrCodeUrlAttribute()
     {
-        $basePath = env('ImagePath', '/');
-        if ($this->qr_code) {
-            return url($basePath . 'storage/' . $this->qr_code);
+        if (!empty($this->qr_code)) {
+            return asset(Storage::url($this->qr_code));
         }
-        return url($basePath . 'admin/assets/img/no-favicon.png'); // fallback
+        return asset('admin/assets/img/no-favicon.png'); // fallback
     }
 
     protected static function boot()

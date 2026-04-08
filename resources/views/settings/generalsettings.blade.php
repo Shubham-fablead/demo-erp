@@ -390,17 +390,14 @@
                         $("#currency_symbol").val(settings.currency_symbol);
 
                         // Logos and Images
-                        if (settings.logo) {
-                            $("#logo_preview").attr("src", ImagePath + '/storage/' + settings.logo)
-                                .show();
+                        if (settings.logo_url) {
+                            $("#logo_preview").attr("src", settings.logo_url).show();
                         }
-                        if (settings.favicon) {
-                            $("#favicon_preview").attr("src", ImagePath + '/storage/' + settings
-                                .favicon).show();
+                        if (settings.favicon_url) {
+                            $("#favicon_preview").attr("src", settings.favicon_url).show();
                         }
-                        if (settings.qr_code) {
-                            $("#qr_preview").attr("src", ImagePath + '/storage/' + settings.qr_code)
-                                .show();
+                        if (settings.qr_code_url) {
+                            $("#qr_preview").attr("src", settings.qr_code_url).show();
                         }
                     }
                 });

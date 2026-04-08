@@ -897,6 +897,384 @@ class PurchaseController extends Controller
         ]);
     }
 
+    public function showRowMaterialPurchase($id, Request $request)
+    {
+        $user = Auth::guard('api')->user();
+        $branchId = $this->resolvePurchaseBranchId($request, $user);
+
+        $invoice = RowMaterialPurchaseInvoice::with('vendor:id,name,email,phone')
+            ->where('id', $id)
+            ->where('branch_id', $branchId)
+            ->where('isDeleted', 0)
+            ->first();
+
+        if (! $invoice) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Row material purchase not found.',
+            ], 404);
+        }
+
+        $items = RowMaterialPurchase::with('rowMaterial:id,row_materialname,category_id,price')
+            ->where('invoice_id', $invoice->id)
+            ->where('branch_id', $branchId)
+            ->where('isDeleted', 0)
+            ->orderBy('id')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'row_material_id' => (int) $item->item,
+                    'row_material_name' => $item->rowMaterial->row_materialname ?? 'N/A',
+                    'category_id' => $item->rowMaterial->category_id ?? null,
+                    'quantity' => (float) $item->quantity,
+                    'price' => (float) $item->price,
+                    'discount_percent' => (float) ($item->discount_percent ?? 0),
+                    'discount_amount' => (float) ($item->discount_amount ?? 0),
+                    'amount_total' => (float) ($item->amount_total ?? 0),
+                    'purchase_status' => $item->purchase_status,
+                    'payment_status' => $item->payment_status,
+                ];
+            });
+
+        $paymentStatus = $items->first()['payment_status'] ?? 'pending';
+        $paidAmount = max((float) $invoice->grand_total - (float) $invoice->remaining_amount, 0);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'invoice' => $invoice,
+                'vendor' => $invoice->vendor,
+                'items' => $items,
+                'payment_status' => $paymentStatus,
+                'paid_amount' => round($paidAmount, 2),
+            ],
+        ]);
+    }
+
+    public function updateRowMaterialPurchase(Request $request, $id)
+    {
+        $user = Auth::guard('api')->user();
+        $userId = $user->id;
+        $branchId = $this->resolvePurchaseBranchId($request, $user);
+
+        $validator = Validator::make($request->all(), [
+            'vendor_id'              => 'required',
+            'status'                 => 'required',
+            'vendor_phone'           => 'nullable|numeric',
+            'discount'               => 'nullable|numeric',
+            'shipping'               => 'required|numeric',
+            'bill_no'                => 'required',
+            'grand_total'            => 'required|numeric',
+            'products'               => 'required|array|min:1',
+            'products.*.id'          => 'required',
+            'products.*.category_id' => 'required',
+            'products.*.price'       => 'required|numeric|min:0',
+            'products.*.quantity'    => 'required|numeric|min:1',
+            'products.*.discount_percent' => 'nullable|numeric|min:0|max:100',
+            'products.*.discount_amount'  => 'nullable|numeric|min:0',
+            'products.*.total'       => 'required|numeric|min:0',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $invoice = RowMaterialPurchaseInvoice::where('id', $id)
+            ->where('branch_id', $branchId)
+            ->where('isDeleted', 0)
+            ->first();
+
+        if (! $invoice) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Row material purchase not found.',
+            ], 404);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $vendorId = $this->createOrResolveVendor($request, $userId, $branchId);
+
+            $oldItems = RowMaterialPurchase::where('invoice_id', $invoice->id)
+                ->where('branch_id', $branchId)
+                ->where('isDeleted', 0)
+                ->get();
+
+            $oldQtyByMaterial = $oldItems->groupBy('item')->map(function ($group) {
+                return (float) $group->sum('quantity');
+            });
+
+            $materialIds = array_filter(array_column($request->products, 'id'), 'is_numeric');
+            $materials = RowMaterial::whereIn('id', $materialIds)->get()->keyBy('id');
+
+            $newQtyByMaterial = [];
+            $purchaseRows = [];
+            $inventoryRows = [];
+            $materialUpdates = [];
+            $now = now();
+
+            foreach ($request->products as $material) {
+                if (! is_numeric($material['id'])) {
+                    continue;
+                }
+
+                $materialModel = $materials->get((int) $material['id']);
+                if (! $materialModel) {
+                    continue;
+                }
+
+                $materialId = (int) $material['id'];
+                $quantity = (float) $material['quantity'];
+                $newQtyByMaterial[$materialId] = ($newQtyByMaterial[$materialId] ?? 0) + $quantity;
+
+                $purchaseRows[] = [
+                    'invoice_id'          => $invoice->id,
+                    'item'                => $materialId,
+                    'quantity'            => $quantity,
+                    'price'               => $material['price'],
+                    'discount_percent'    => $material['discount_percent'] ?? 0,
+                    'discount_amount'     => $material['discount_amount'] ?? 0,
+                    'amount_total'        => $material['total'],
+                    'product_gst_details' => json_encode([]),
+                    'product_gst_total'   => 0,
+                    'vendor_id'           => $vendorId,
+                    'purchase_status'     => $request->status,
+                    'payment_status'      => 'pending',
+                    'branch_id'           => $branchId,
+                    'created_by'          => $userId,
+                    'created_at'          => $now,
+                    'updated_at'          => $now,
+                    'isDeleted'           => 0,
+                ];
+            }
+
+            $remainingAmount = 0;
+            if (($request->paid_type ?? '') === 'full') {
+                $remainingAmount = 0;
+            } elseif (($request->paid_type ?? '') === 'partial') {
+                $paidAmount = $request->amount ?? (($request->cash_amount ?? 0) + ($request->upi_amount ?? 0));
+                $remainingAmount = max((float) $request->grand_total - (float) $paidAmount, 0);
+            } else {
+                $remainingAmount = max((float) ($request->remaining_amount ?? $request->grand_total), 0);
+            }
+
+            $paymentStatus = 'pending';
+            if ($remainingAmount <= 0) {
+                $paymentStatus = 'completed';
+            } elseif ($remainingAmount < (float) $request->grand_total) {
+                $paymentStatus = 'partially';
+            }
+
+            foreach ($purchaseRows as &$purchaseRow) {
+                $purchaseRow['payment_status'] = $paymentStatus;
+            }
+            unset($purchaseRow);
+
+            $deltaMaterialIds = array_unique(array_merge(
+                array_map('intval', array_keys($oldQtyByMaterial->toArray())),
+                array_map('intval', array_keys($newQtyByMaterial))
+            ));
+
+            $deltaMaterials = RowMaterial::whereIn('id', $deltaMaterialIds)->get()->keyBy('id');
+
+            foreach ($deltaMaterialIds as $materialId) {
+                $materialModel = $deltaMaterials->get($materialId);
+                if (! $materialModel) {
+                    continue;
+                }
+
+                $oldQty = (float) ($oldQtyByMaterial[$materialId] ?? 0);
+                $newQty = (float) ($newQtyByMaterial[$materialId] ?? 0);
+                $delta = $newQty - $oldQty;
+                $currentStock = (float) $materialModel->quantity;
+                $updatedStock = round($currentStock + $delta, 3);
+
+                if ($updatedStock < 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Not enough stock available to reduce quantity for ' . ($materialModel->row_materialname ?? 'selected material') . '.',
+                    ], 422);
+                }
+
+                $matchingProduct = collect($request->products)->first(function ($product) use ($materialId) {
+                    return (int) ($product['id'] ?? 0) === (int) $materialId;
+                });
+
+                $materialUpdates[$materialId] = [
+                    'quantity' => $updatedStock,
+                    'category_id' => $matchingProduct['category_id'] ?? $materialModel->category_id,
+                    'price' => $matchingProduct['price'] ?? $materialModel->price,
+                    'availablility' => $updatedStock > 0 ? 'in_stock' : 'out_stock',
+                ];
+
+                if ((float) $delta !== 0.0) {
+                    $inventoryRows[] = [
+                        'row_material_id' => $materialId,
+                        'initial_stock'   => $currentStock,
+                        'current_stock'   => $updatedStock,
+                        'branch_id'       => $branchId,
+                        'create_by'       => $userId,
+                        'type'            => 'Purchase Update',
+                        'date'            => $now,
+                        'created_at'      => $now,
+                        'updated_at'      => $now,
+                    ];
+                }
+            }
+
+            $invoice->update([
+                'vendor_id'        => $vendorId,
+                'bill_no'          => $request->bill_no,
+                'materials'        => json_encode($purchaseRows),
+                'total_amount'     => collect($purchaseRows)->sum('amount_total'),
+                'discount'         => $request->discount ?? 0,
+                'shipping'         => $request->shipping,
+                'grand_total'      => $request->grand_total,
+                'remaining_amount' => $remainingAmount,
+                'gst_option'       => $request->gst_option === 'with' ? 'with_gst' : 'without_gst',
+                'status'           => $request->status,
+                'taxes'            => json_encode($request->taxes),
+                'updated_by'       => $userId,
+            ]);
+
+            RowMaterialPurchase::where('invoice_id', $invoice->id)
+                ->where('branch_id', $branchId)
+                ->where('isDeleted', 0)
+                ->update(['isDeleted' => 1, 'updated_at' => $now]);
+
+            if (! empty($purchaseRows)) {
+                RowMaterialPurchase::insert($purchaseRows);
+            }
+
+            foreach ($materialUpdates as $materialId => $updateData) {
+                RowMaterial::where('id', $materialId)->update($updateData);
+            }
+
+            if (! empty($inventoryRows)) {
+                RowMaterialInventory::insert($inventoryRows);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Row material purchase updated successfully.',
+                'purchase_id' => $invoice->id,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function deleteRowMaterialPurchase(Request $request, $id)
+    {
+        $user = Auth::guard('api')->user();
+        $userId = $user->id;
+        $branchId = $this->resolvePurchaseBranchId($request, $user);
+
+        $invoice = RowMaterialPurchaseInvoice::where('id', $id)
+            ->where('branch_id', $branchId)
+            ->where('isDeleted', 0)
+            ->first();
+
+        if (! $invoice) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Row material purchase not found.',
+            ], 404);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $items = RowMaterialPurchase::where('invoice_id', $invoice->id)
+                ->where('branch_id', $branchId)
+                ->where('isDeleted', 0)
+                ->get();
+
+            $qtyByMaterial = $items->groupBy('item')->map(function ($group) {
+                return (float) $group->sum('quantity');
+            });
+
+            $materials = RowMaterial::whereIn('id', $qtyByMaterial->keys()->all())->get()->keyBy('id');
+            $inventoryRows = [];
+            $now = now();
+
+            foreach ($qtyByMaterial as $materialId => $quantityToReverse) {
+                $material = $materials->get((int) $materialId);
+                if (! $material) {
+                    continue;
+                }
+
+                $currentStock = (float) $material->quantity;
+                $updatedStock = round($currentStock - (float) $quantityToReverse, 3);
+
+                if ($updatedStock < 0) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Cannot delete purchase because stock for ' . $material->row_materialname . ' has already been consumed.',
+                    ], 422);
+                }
+
+                $material->update([
+                    'quantity' => $updatedStock,
+                    'availablility' => $updatedStock > 0 ? 'in_stock' : 'out_stock',
+                ]);
+
+                $inventoryRows[] = [
+                    'row_material_id' => $material->id,
+                    'initial_stock'   => $currentStock,
+                    'current_stock'   => $updatedStock,
+                    'branch_id'       => $branchId,
+                    'create_by'       => $userId,
+                    'type'            => 'Purchase Delete',
+                    'date'            => $now,
+                    'created_at'      => $now,
+                    'updated_at'      => $now,
+                ];
+            }
+
+            RowMaterialPurchase::where('invoice_id', $invoice->id)
+                ->where('branch_id', $branchId)
+                ->where('isDeleted', 0)
+                ->update(['isDeleted' => 1, 'updated_at' => $now]);
+
+            $invoice->update([
+                'isDeleted' => 1,
+                'updated_by' => $userId,
+            ]);
+
+            if (! empty($inventoryRows)) {
+                RowMaterialInventory::insert($inventoryRows);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Row material purchase deleted successfully.',
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     // public function purchase_list(Request $request)
     // {
     //     $user = Auth::guard('api')->user();
