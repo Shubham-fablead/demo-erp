@@ -63,11 +63,27 @@
                     },
                     success: function(response) {
                         const rows = (response.data || []).map(function(item) {
+                            const statusClass = {
+                                'completed': 'bg-lightgreen',
+                                'in_production': 'bg-lightpurple',
+                                'draft': 'bg-lightyellow'
+                            }[item.status] || 'bg-lightyellow';
+
+                            const statusLabel = {
+                                'completed': 'Completed',
+                                'in_production': 'In Production',
+                                'draft': 'Draft'
+                            }[item.status] || item.status;
+
                             const editAction = item.status === 'draft'
                                 ? `<a href="/inventory/productions/${item.id}/edit" class="me-3" title="Edit">
                                         <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
                                    </a>`
-                                : '';
+                                : (item.status === 'in_production'
+                                    ? `<a href="/inventory/productions/${item.id}/edit" class="me-3" title="Complete Production">
+                                            <img src="{{ env('ImagePath') . '/admin/assets/img/icons/edit.svg' }}" alt="edit">
+                                       </a>`
+                                    : '');
                             const deleteAction = item.status === 'draft'
                                 ? `<a href="javascript:void(0);" class="delete-production me-3" data-id="${item.id}" title="Delete">
                                         <img src="{{ env('ImagePath') . '/admin/assets/img/icons/delete.svg' }}" alt="delete">
@@ -82,7 +98,7 @@
                                     <td>${parseFloat(item.production_qty).toFixed(3)} ${item.product?.unit?.unit_name || ''}</td>
                                     <td>${parseFloat(item.output_qty).toFixed(3)} ${item.product?.unit?.unit_name || ''}</td>
                                     <td>${parseFloat(item.total_cost).toFixed(2)}</td>
-                                    <td><span class="badges ${item.status === 'completed' ? 'bg-lightgreen' : 'bg-lightyellow'}">${item.status}</span></td>
+                                    <td><span class="badges ${statusClass}">${statusLabel}</span></td>
                                     <td>${item.production_date}</td>
                                     <td>
                                         ${editAction}

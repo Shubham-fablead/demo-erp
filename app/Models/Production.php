@@ -35,8 +35,8 @@ class Production extends Model
     ];
 
     protected $casts = [
-        'production_date' => 'date',
-        'expiry_date' => 'date',
+        'production_date' => 'date:Y-m-d',
+        'expiry_date' => 'date:Y-m-d',
     ];
 
     public function product()

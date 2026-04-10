@@ -80,7 +80,7 @@
                         </ul>
                     </li>
                 @endif
-                @if (app('hasPermission')(17, 'view'))
+                @if (app('hasPermission')(17, 'view') || app('hasPermission')(28, 'view') || app('hasPermission')(29, 'view'))
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="fa fa-warehouse"></i>
@@ -88,10 +88,16 @@
                             <span class="menu-arrow"></span>
                         </a>
                         <ul>
-                            <li><a href="{{ route('inventory.list') }}">Stock Inventory</a></li>
-                            <li><a href="{{ route('row_material.inventory') }}">Material Inventory</a></li>
-                            <li><a href="{{ route('inventory.bom.list') }}">Bill of Materials</a></li>
-                            <li><a href="{{ route('inventory.production.list') }}">Production</a></li>
+                            @if (app('hasPermission')(17, 'view'))
+                                <li><a href="{{ route('inventory.list') }}">Stock Inventory</a></li>
+                                <li><a href="{{ route('row_material.inventory') }}">Material Inventory</a></li>
+                            @endif
+                            @if (app('hasPermission')(28, 'view'))
+                                <li><a href="{{ route('inventory.bom.list') }}">Bill of Materials</a></li>
+                            @endif
+                            @if (app('hasPermission')(29, 'view'))
+                                <li><a href="{{ route('inventory.production.list') }}">Production</a></li>
+                            @endif
                         </ul>
                     </li>
                 @endif

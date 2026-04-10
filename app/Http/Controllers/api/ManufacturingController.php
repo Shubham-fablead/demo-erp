@@ -25,7 +25,6 @@ class ManufacturingController extends Controller
         return Validator::make($request->all(), [
             'product_id' => 'required|integer|exists:products,id',
             'base_quantity' => 'required|numeric|gt:0',
-            'wastage_percentage' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'status' => 'required|in:active,inactive',
             'items' => 'required|array|min:1',
@@ -57,12 +56,13 @@ class ManufacturingController extends Controller
         return $value;
     }
 
-    private function buildProductionPreview(Bom $bom, float $productionQty): array
+    private function buildProductionPreview(Bom $bom, float $productionQty, ?float $wastageOverride = null): array
     {
         $product = $bom->product;
         $baseQuantity = (float) ($bom->base_quantity ?: 1);
         $factor = $baseQuantity > 0 ? ($productionQty / $baseQuantity) : 0;
-        $wastagePercentage = (float) ($bom->wastage_percentage ?? 0);
+        // Use production-level wastage if provided, otherwise fall back to BOM wastage
+        $wastagePercentage = $wastageOverride !== null ? $wastageOverride : (float) ($bom->wastage_percentage ?? 0);
         $wastageQty = round(($productionQty * $wastagePercentage) / 100, 3);
         $outputQty = max(round($productionQty - $wastageQty, 3), 0);
 
@@ -210,7 +210,7 @@ class ManufacturingController extends Controller
                 'bom_code' => $this->generateCode('BOM', 'boms', 'bom_code'),
                 'product_id' => $request->product_id,
                 'base_quantity' => $request->base_quantity,
-                'wastage_percentage' => $request->wastage_percentage ?? 0,
+                'wastage_percentage' => 0,
                 'notes' => $request->notes,
                 'status' => $request->status,
                 'branch_id' => $branchId,
@@ -274,7 +274,7 @@ class ManufacturingController extends Controller
             $bom->update([
                 'product_id' => $request->product_id,
                 'base_quantity' => $request->base_quantity,
-                'wastage_percentage' => $request->wastage_percentage ?? 0,
+                'wastage_percentage' => 0,
                 'notes' => $request->notes,
                 'status' => $request->status,
             ]);
@@ -394,6 +394,7 @@ class ManufacturingController extends Controller
         $validator = Validator::make($request->all(), [
             'product_id' => 'required|integer|exists:products,id',
             'production_qty' => 'required|numeric|gt:0',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         if ($validator->fails()) {
@@ -423,7 +424,8 @@ class ManufacturingController extends Controller
             ], 404);
         }
 
-        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty);
+        $wastageOverride = $request->has('wastage_percentage') ? (float) $request->wastage_percentage : null;
+        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty, $wastageOverride);
 
         return response()->json([
             'status' => true,
@@ -475,7 +477,8 @@ class ManufacturingController extends Controller
             'product_id' => 'required|integer|exists:products,id',
             'production_qty' => 'required|numeric|gt:0',
             'production_date' => 'required|date',
-            'status' => 'required|in:draft,completed',
+            'status' => 'required|in:draft,in_production,completed',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
             'labor_cost' => 'nullable|numeric|min:0',
             'electricity_cost' => 'nullable|numeric|min:0',
             'extra_cost' => 'nullable|numeric|min:0',
@@ -510,14 +513,16 @@ class ManufacturingController extends Controller
             ], 404);
         }
 
-        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty);
+        $wastageOverride = $request->has('wastage_percentage') ? (float) $request->wastage_percentage : null;
+        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty, $wastageOverride);
         $laborCost = round((float) ($request->labor_cost ?? 0), 2);
         $electricityCost = round((float) ($request->electricity_cost ?? 0), 2);
         $extraCost = round((float) ($request->extra_cost ?? 0), 2);
         $totalCost = round($preview['material_cost'] + $laborCost + $electricityCost + $extraCost, 2);
         $costPerUnit = $preview['output_qty'] > 0 ? round($totalCost / $preview['output_qty'], 4) : 0;
 
-        if ($request->status === 'completed' && ! empty($preview['insufficient_items'])) {
+        // Both in_production and completed require sufficient raw material stock
+        if (in_array($request->status, ['in_production', 'completed']) && ! empty($preview['insufficient_items'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'Insufficient stock for: ' . implode(', ', $preview['insufficient_items']),
@@ -560,7 +565,9 @@ class ManufacturingController extends Controller
                 ]);
             }
 
-            if ($request->status === 'completed') {
+            // in_production: deduct raw materials (production started, materials consumed)
+            // completed (direct): deduct raw materials AND add finished product
+            if (in_array($request->status, ['in_production', 'completed'])) {
                 foreach ($preview['items'] as $item) {
                     $material = RowMaterial::findOrFail($item['raw_material_id']);
                     $previousStock = (float) $material->quantity;
@@ -577,11 +584,14 @@ class ManufacturingController extends Controller
                         'current_stock' => $newStock,
                         'branch_id' => $branchId,
                         'create_by' => $user->id,
-                        'type' => 'Production Consume',
+                        'type' => $request->status === 'in_production' ? 'Production In-Progress' : 'Production Consume',
                         'date' => now(),
                     ]);
                 }
+            }
 
+            // Only add finished product to inventory when completed
+            if ($request->status === 'completed') {
                 $product = Product::findOrFail($request->product_id);
                 $previousProductStock = (float) $product->quantity;
                 $newProductStock = round($previousProductStock + $preview['output_qty'], 3);
@@ -605,11 +615,15 @@ class ManufacturingController extends Controller
 
             DB::commit();
 
+            $messages = [
+                'draft' => 'Production draft saved successfully.',
+                'in_production' => 'Production started. Raw materials have been consumed from inventory.',
+                'completed' => 'Production completed successfully.',
+            ];
+
             return response()->json([
                 'status' => true,
-                'message' => $request->status === 'completed'
-                    ? 'Production completed successfully.'
-                    : 'Production draft saved successfully.',
+                'message' => $messages[$request->status] ?? 'Production saved.',
                 'data' => $production->load(['items.rawMaterial', 'product', 'bom']),
             ]);
         } catch (\Throwable $e) {
@@ -631,7 +645,8 @@ class ManufacturingController extends Controller
             'product_id' => 'required|integer|exists:products,id',
             'production_qty' => 'required|numeric|gt:0',
             'production_date' => 'required|date',
-            'status' => 'required|in:draft,completed',
+            'status' => 'required|in:draft,in_production,completed',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
             'labor_cost' => 'nullable|numeric|min:0',
             'electricity_cost' => 'nullable|numeric|min:0',
             'extra_cost' => 'nullable|numeric|min:0',
@@ -652,10 +667,20 @@ class ManufacturingController extends Controller
             ->where('branch_id', $branchId)
             ->findOrFail($id);
 
-        if ($production->status === 'completed') {
+        $previousStatus = $production->status;
+
+        if ($previousStatus === 'completed') {
             return response()->json([
                 'status' => false,
                 'message' => 'Completed production cannot be edited because inventory is already posted.',
+            ], 422);
+        }
+
+        // Prevent going backwards: in_production cannot revert to draft
+        if ($previousStatus === 'in_production' && $request->status === 'draft') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Cannot revert to draft. Raw materials have already been consumed from inventory.',
             ], 422);
         }
 
@@ -677,14 +702,17 @@ class ManufacturingController extends Controller
             ], 404);
         }
 
-        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty);
+        $wastageOverride = $request->has('wastage_percentage') ? (float) $request->wastage_percentage : null;
+        $preview = $this->buildProductionPreview($bom, (float) $request->production_qty, $wastageOverride);
         $laborCost = round((float) ($request->labor_cost ?? 0), 2);
         $electricityCost = round((float) ($request->electricity_cost ?? 0), 2);
         $extraCost = round((float) ($request->extra_cost ?? 0), 2);
         $totalCost = round($preview['material_cost'] + $laborCost + $electricityCost + $extraCost, 2);
         $costPerUnit = $preview['output_qty'] > 0 ? round($totalCost / $preview['output_qty'], 4) : 0;
 
-        if ($request->status === 'completed' && ! empty($preview['insufficient_items'])) {
+        // Check stock only when transitioning from draft to in_production or completed
+        $needsStockCheck = $previousStatus === 'draft' && in_array($request->status, ['in_production', 'completed']);
+        if ($needsStockCheck && ! empty($preview['insufficient_items'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'Insufficient stock for: ' . implode(', ', $preview['insufficient_items']),
@@ -726,7 +754,9 @@ class ManufacturingController extends Controller
                 ]);
             }
 
-            if ($request->status === 'completed') {
+            // draft → in_production: deduct raw materials (production started)
+            // draft → completed: deduct raw materials (direct completion)
+            if ($previousStatus === 'draft' && in_array($request->status, ['in_production', 'completed'])) {
                 foreach ($preview['items'] as $item) {
                     $material = RowMaterial::findOrFail($item['raw_material_id']);
                     $previousStock = (float) $material->quantity;
@@ -743,11 +773,15 @@ class ManufacturingController extends Controller
                         'current_stock' => $newStock,
                         'branch_id' => $branchId,
                         'create_by' => $user->id,
-                        'type' => 'Production Consume',
+                        'type' => $request->status === 'in_production' ? 'Production In-Progress' : 'Production Consume',
                         'date' => now(),
                     ]);
                 }
+            }
 
+            // in_production → completed: add finished product to inventory
+            // draft → completed: also add finished product
+            if ($request->status === 'completed' && $previousStatus !== 'completed') {
                 $product = Product::findOrFail($request->product_id);
                 $previousProductStock = (float) $product->quantity;
                 $newProductStock = round($previousProductStock + $preview['output_qty'], 3);
@@ -771,11 +805,15 @@ class ManufacturingController extends Controller
 
             DB::commit();
 
+            $messages = [
+                'draft' => 'Production draft updated successfully.',
+                'in_production' => 'Production started. Raw materials have been consumed from inventory.',
+                'completed' => 'Production updated and completed successfully.',
+            ];
+
             return response()->json([
                 'status' => true,
-                'message' => $request->status === 'completed'
-                    ? 'Production updated and completed successfully.'
-                    : 'Production draft updated successfully.',
+                'message' => $messages[$request->status] ?? 'Production updated.',
                 'data' => $production->load(['items.rawMaterial', 'product', 'bom']),
             ]);
         } catch (\Throwable $e) {
@@ -794,10 +832,10 @@ class ManufacturingController extends Controller
 
         $production = Production::where('branch_id', $branchId)->findOrFail($id);
 
-        if ($production->status === 'completed') {
+        if (in_array($production->status, ['in_production', 'completed'])) {
             return response()->json([
                 'status' => false,
-                'message' => 'Completed production cannot be deleted because inventory is already posted.',
+                'message' => 'Production cannot be deleted because raw materials have already been consumed from inventory.',
             ], 422);
         }
 

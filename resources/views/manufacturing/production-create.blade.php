@@ -41,10 +41,19 @@
                             <input type="text" id="product_unit" class="form-control" readonly>
                         </div>
                     </div>
-                    <div class="col-lg-2">
+                    <div class="col-lg-4">
                         <div class="form-group">
                             <label>Production Date</label>
                             <input type="date" id="production_date" class="form-control" value="{{ now()->format('Y-m-d') }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-2">
+                        <div class="form-group">
+                            <label>Wastage %</label>
+                            <input type="number" id="wastage_percentage" class="form-control" min="0" max="100" step="0.01" value="0" placeholder="0">
                         </div>
                     </div>
                     <div class="col-lg-2">
@@ -52,13 +61,11 @@
                             <label>Status</label>
                             <select id="production_status" class="form-control">
                                 <option value="completed" {{ $editId ? '' : 'selected' }}>Completed</option>
+                                <option value="in_production">In Production</option>
                                 <option value="draft" {{ $editId ? 'selected' : '' }}>Draft</option>
                             </select>
                         </div>
                     </div>
-                </div>
-
-                <div class="row">
                     <div class="col-lg-2">
                         <div class="form-group">
                             <label>Labor Cost</label>
@@ -77,13 +84,16 @@
                             <input type="number" id="extra_cost" class="form-control" min="0" step="0.01" value="0">
                         </div>
                     </div>
-                    <div class="col-lg-3">
+                    <div class="col-lg-2">
                         <div class="form-group">
                             <label>Batch No</label>
                             <input type="text" id="batch_no" class="form-control" placeholder="Optional">
                         </div>
                     </div>
-                    <div class="col-lg-3">
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-4">
                         <div class="form-group">
                             <label>Expiry Date</label>
                             <input type="date" id="expiry_date" class="form-control">
@@ -193,35 +203,57 @@
             function syncProductionActionState() {
                 const status = $('#production_status').val();
                 const isCompleted = status === 'completed';
+                const isInProduction = status === 'in_production';
 
                 if (isEditMode) {
-                    $('#save-production').text(isCompleted ? 'Update And Complete' : 'Update Draft');
-                    $('#production-status-note').text(
-                        isCompleted
-                            ? 'Completing this draft will consume raw materials and update finished stock once.'
-                            : 'Draft production is saved without changing material inventory stock.'
-                    );
+                    if (isCompleted) {
+                        $('#save-production').text('Complete Production');
+                        $('#production-status-note').text('Completing this production will add finished goods to product inventory.');
+                    } else if (isInProduction) {
+                        $('#save-production').text('Start Production');
+                        $('#production-status-note').text('Starting production will consume raw materials from inventory. Finished goods will be added when completed.');
+                    } else {
+                        $('#save-production').text('Update Draft');
+                        $('#production-status-note').text('Draft production is saved without changing material inventory stock.');
+                    }
                     return;
                 }
 
-                $('#save-production').text(isCompleted ? 'Save Production' : 'Save Draft');
-                $('#production-status-note').text(
-                    isCompleted
-                        ? 'Completed production will consume raw materials and update inventory stock.'
-                        : 'Draft production is saved without changing material inventory stock.'
-                );
+                if (isCompleted) {
+                    $('#save-production').text('Save Production');
+                    $('#production-status-note').text('Completed production will consume raw materials and update inventory stock.');
+                } else if (isInProduction) {
+                    $('#save-production').text('Start Production');
+                    $('#production-status-note').text('Starting production will consume raw materials from inventory. Finished goods will be added when completed.');
+                } else {
+                    $('#save-production').text('Save Draft');
+                    $('#production-status-note').text('Draft production is saved without changing material inventory stock.');
+                }
+            }
+
+            function formatDate(value) {
+                if (!value) return '';
+                // Handle full ISO datetime strings like "2026-04-10T00:00:00.000000Z"
+                return value.toString().substring(0, 10);
             }
 
             function fillForm(data) {
-                $('#product_id').val(data.product_id).trigger('change');
+                // For select2: set value then trigger change for select2 to update display
+                const $productSelect = $('#product_id');
+                $productSelect.val(String(data.product_id)).trigger('change.select2');
+                // Also update unit label from the selected option
+                const selectedOption = $productSelect.find('option[value="' + data.product_id + '"]');
+                $('#product_unit').val(selectedOption.data('unit') || '');
+
                 $('#production_qty').val(data.production_qty);
-                $('#production_date').val(data.production_date || '');
+                $('#production_date').val(formatDate(data.production_date));
+                $('#wastage_percentage').val(data.wastage_percentage ?? 0);
                 $('#production_status').val(data.status || 'draft');
                 $('#labor_cost').val(data.labor_cost || 0);
                 $('#electricity_cost').val(data.electricity_cost || 0);
                 $('#extra_cost').val(data.extra_cost || 0);
                 $('#batch_no').val(data.batch_no || '');
-                $('#expiry_date').val(data.expiry_date || '');
+                $('#expiry_date').val(formatDate(data.expiry_date));
                 $('#notes').val(data.notes || '');
                 syncProductionActionState();
                 fetchPreview();
@@ -265,11 +297,16 @@
                     data: JSON.stringify({
                         selectedSubAdminId: selectedSubAdminId,
                         product_id: $('#product_id').val(),
-                        production_qty: $('#production_qty').val()
+                        production_qty: $('#production_qty').val(),
+                        wastage_percentage: $('#wastage_percentage').val()
                     }),
                     success: function(response) {
                         currentPreview = response.data;
                         renderSummary(response.data);
+
+                        // Show BOM default wastage as placeholder hint
+                        const bomWastage = response.data.bom?.wastage_percentage ?? 0;
+                        $('#wastage_percentage').attr('placeholder', 'BOM default: ' + bomWastage);
 
                         const rows = (response.data.items || []).map(function(item) {
                             return `
@@ -313,6 +350,10 @@
                                 });
                                 return;
                             }
+                            // Disable status options that would be a downgrade for in_production
+                            if (item.status === 'in_production') {
+                                $('#production_status option[value="draft"]').prop('disabled', true);
+                            }
                             fillForm(item);
                         },
                         error: function(xhr) {
@@ -323,11 +364,13 @@
             });
 
             $('#product_id').on('change', function() {
-                $('#product_unit').val($(this).find(':selected').data('unit') || '');
+                const unit = $(this).find('option:selected').data('unit') || '';
+                $('#product_unit').val(unit);
             });
 
             $('#preview-production').on('click', fetchPreview);
             $('#production_status').on('change', syncProductionActionState);
+            $('#wastage_percentage').on('input', fetchPreview);
             $('#labor_cost, #electricity_cost, #extra_cost').on('input', function() {
                 if (currentPreview) {
                     renderSummary(currentPreview);
@@ -349,6 +392,7 @@
                         production_qty: $('#production_qty').val(),
                         production_date: $('#production_date').val(),
                         status: $('#production_status').val(),
+                        wastage_percentage: $('#wastage_percentage').val(),
                         labor_cost: $('#labor_cost').val(),
                         electricity_cost: $('#electricity_cost').val(),
                         extra_cost: $('#extra_cost').val(),

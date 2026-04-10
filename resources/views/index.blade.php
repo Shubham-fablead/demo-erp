@@ -1243,6 +1243,54 @@
                         $('#totalPurchase').text(parseFloat(response.data.totals.purchase).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                         $('#totalSales').text(parseFloat(response.data.totals.sales).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                         $('#totalExpense').text(parseFloat(response.data.totals.expense).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
+                        // ✅ Low Stock Alert
+                        const lowStock = response.data.lowStock;
+                        if (lowStock && lowStock.threshold > 0 && lowStock.products && lowStock.products.length > 0) {
+                            const sessionKey = 'lowStockAlertShown_' + new Date().toDateString();
+                            if (!sessionStorage.getItem(sessionKey)) {
+                                sessionStorage.setItem(sessionKey, '1');
+
+                                const rows = lowStock.products.map(function(p) {
+                                    const qty = parseFloat(p.quantity);
+                                    const badgeClass = qty <= 0 ? 'bg-lightred' : 'bg-lightyellow';
+                                    const label = qty <= 0 ? 'Out of Stock' : 'Low Stock';
+                                    return `<tr>
+                                        <td style="text-align:left;padding:6px 10px;">${p.name}</td>
+                                        <td style="text-align:center;padding:6px 10px;">${qty.toFixed(3)}</td>
+                                        <td style="text-align:center;padding:6px 10px;"><span class="badges ${badgeClass}" style="font-size:11px;">${label}</span></td>
+                                    </tr>`;
+                                }).join('');
+
+                                Swal.fire({
+                                    title: '⚠️ Low Stock Alert',
+                                    html: `
+                                        <p style="margin-bottom:10px;color:#555;">The following products are below the threshold of <strong>${lowStock.threshold}</strong> units:</p>
+                                        <div style="max-height:300px;overflow-y:auto;">
+                                            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                                <thead>
+                                                    <tr style="background:#f5f5f5;">
+                                                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Product</th>
+                                                        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid #ddd;">Current Qty</th>
+                                                        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid #ddd;">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>${rows}</tbody>
+                                            </table>
+                                        </div>`,
+                                    icon: 'warning',
+                                    confirmButtonText: 'View Products',
+                                    showCancelButton: true,
+                                    cancelButtonText: 'Dismiss',
+                                    confirmButtonColor: '#ff9f43',
+                                    width: '600px',
+                                }).then(function(result) {
+                                    if (result.isConfirmed) {
+                                        window.location.href = '/product';
+                                    }
+                                });
+                            }
+                        }
                     }
                 },
                 error: function(xhr) {
