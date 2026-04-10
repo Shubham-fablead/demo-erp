@@ -1,0 +1,5 @@
+.env
+storage/*
+public/*
+bootstrap/cache/*
+vendor/*

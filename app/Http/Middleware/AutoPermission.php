@@ -108,6 +108,17 @@ class AutoPermission
             'debit-notes-items' => 27,
         ];
 
+        // BOM and Production use the 'inventory' prefix but need their own module IDs
+        $routeNameModuleMap['inventory.bom.list']  = 28;
+        $routeNameModuleMap['inventory.bom.add']   = 28;
+        $routeNameModuleMap['inventory.bom.create'] = 28;
+        $routeNameModuleMap['inventory.bom.edit']  = 28;
+        $routeNameModuleMap['inventory.bom.view']  = 28;
+        $routeNameModuleMap['inventory.production.list'] = 29;
+        $routeNameModuleMap['inventory.production.add']  = 29;
+        $routeNameModuleMap['inventory.production.edit'] = 29;
+        $routeNameModuleMap['inventory.production.view'] = 29;
+
         $moduleId = $routeNameModuleMap[$normalizedRouteName] ?? ($moduleIdMap[$module] ?? null);
 
         if (!$moduleId) {

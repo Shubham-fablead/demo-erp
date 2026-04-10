@@ -44,12 +44,6 @@
                     </div>
                     <div class="col-lg-2">
                         <div class="form-group">
-                            <label>Wastage %</label>
-                            <input type="number" id="wastage_percentage" class="form-control" min="0" step="0.01" value="0">
-                        </div>
-                    </div>
-                    <div class="col-lg-2">
-                        <div class="form-group">
                             <label>Status</label>
                             <select id="bom_status" class="form-control">
                                 <option value="active">Active</option>
@@ -57,14 +51,15 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-lg-2 d-flex align-items-end">
-                        <button type="button" class="btn btn-primary w-100" id="add-material-row">Add Material</button>
-                    </div>
                 </div>
 
                 <div class="form-group">
                     <label>Notes</label>
                     <textarea id="bom_notes" class="form-control" rows="3" placeholder="Optional recipe notes"></textarea>
+                </div>
+
+                <div class="mb-3 text-end">
+                    <button type="button" class="btn btn-primary" id="add-material-row">Add Material</button>
                 </div>
 
                 <div class="table-responsive">
@@ -183,7 +178,6 @@
                         selectedSubAdminId: selectedSubAdminId,
                         product_id: $('#product_id').val(),
                         base_quantity: $('#base_quantity').val(),
-                        wastage_percentage: $('#wastage_percentage').val(),
                         status: $('#bom_status').val(),
                         notes: $('#bom_notes').val(),
                         items: items
@@ -219,7 +213,6 @@
                         const bom = response.data;
                         $('#product_id').val(bom.product_id).trigger('change');
                         $('#base_quantity').val(bom.base_quantity);
-                        $('#wastage_percentage').val(bom.wastage_percentage || 0);
                         $('#bom_status').val(bom.status);
                         $('#bom_notes').val(bom.notes || '');
                         $('#bom-item-table').empty();

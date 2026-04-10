@@ -63,9 +63,10 @@
                             <div class="col-md-4 mt-2"><strong>Production Qty:</strong> ${parseFloat(item.production_qty || 0).toFixed(3)} ${item.product?.unit?.unit_name || ''}</div>
                             <div class="col-md-4 mt-2"><strong>Output Qty:</strong> ${parseFloat(item.output_qty || 0).toFixed(3)} ${item.product?.unit?.unit_name || ''}</div>
                             <div class="col-md-4 mt-2"><strong>Wastage Qty:</strong> ${parseFloat(item.wastage_qty || 0).toFixed(3)}</div>
+                            <div class="col-md-4 mt-2"><strong>Wastage %:</strong> ${parseFloat(item.wastage_percentage || 0).toFixed(2)}%</div>
                             <div class="col-md-4 mt-2"><strong>Total Cost:</strong> ${parseFloat(item.total_cost || 0).toFixed(2)}</div>
                             <div class="col-md-4 mt-2"><strong>Cost / Unit:</strong> ${parseFloat(item.cost_per_unit || 0).toFixed(4)}</div>
-                            <div class="col-md-4 mt-2"><strong>Status:</strong> <span class="badges ${item.status === 'completed' ? 'bg-lightgreen' : 'bg-lightyellow'}">${item.status || '-'}</span></div>
+                            <div class="col-md-4 mt-2"><strong>Status:</strong> <span class="badges ${item.status === 'completed' ? 'bg-lightgreen' : (item.status === 'in_production' ? 'bg-lightpurple' : 'bg-lightyellow')}">${item.status === 'in_production' ? 'In Production' : (item.status === 'completed' ? 'Completed' : 'Draft')}</span></div>
                             <div class="col-md-4 mt-2"><strong>Production Date:</strong> ${item.production_date || '-'}</div>
                             <div class="col-md-4 mt-2"><strong>Batch No:</strong> ${item.batch_no || '-'}</div>
                             <div class="col-md-4 mt-2"><strong>Expiry Date:</strong> ${item.expiry_date || '-'}</div>

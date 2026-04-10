@@ -499,6 +499,18 @@ class LoginController extends Controller
         $settings = DB::table('settings')->where('branch_id', $BranchID)->first();
         $currencySymbol = $settings->currency_symbol ?? '₹';
         $currencyPosition = $settings->currency_position ?? 'left';
+        $lowStockThreshold = (float) ($settings->low_stock ?? 0);
+
+        // ✅ Low Stock Products (only when threshold is set)
+        $lowStockProducts = [];
+        if ($lowStockThreshold > 0) {
+            $lowStockProducts = Product::where('isDeleted', '!=', 1)
+                ->where('branch_id', $BranchID)
+                ->where('quantity', '<', $lowStockThreshold)
+                ->orderBy('quantity', 'asc')
+                ->get(['id', 'name', 'quantity', 'availablility'])
+                ->toArray();
+        }
 
         return response()->json([
             'status' => true,
@@ -531,6 +543,10 @@ class LoginController extends Controller
                 'currency' => [
                     'symbol' => $currencySymbol,
                     'position' => $currencyPosition,
+                ],
+                'lowStock' => [
+                    'threshold' => $lowStockThreshold,
+                    'products' => $lowStockProducts,
                 ],
             ]
         ], 200);
