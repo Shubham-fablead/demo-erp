@@ -44,7 +44,7 @@ jobs:
       - name: Deploy to cPanel via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: 145.79.212.228
+          server: 82.29.163.188
           username: 'u378554361.mfgftpusr'
           password: 'y9K*cOna^'
           server-dir: /
