@@ -23,11 +23,19 @@ class LoginController extends Controller
 
     public function login(Request $request)
     {
-    // dd('asd');
         $request->validate([
-            'email' => 'required|string|email',
+            'username' => 'nullable|string',
+            'email'    => 'nullable|string|email',
             'password' => 'required|string',
         ]);
+
+        // Accept either 'email' or 'username' field
+        $email = $request->input('email') ?: $request->input('username');
+
+        if (!$email) {
+            return response()->json(['status' => false, 'error' => 'Email or username is required.'], 422);
+        }
+
         $key = 'login-attempts-' . $request->ip();
         $force = filter_var($request->input('force', false), FILTER_VALIDATE_BOOLEAN);
         if (RateLimiter::tooManyAttempts($key, 5)) {
@@ -36,7 +44,7 @@ class LoginController extends Controller
                 'error' => 'Too many login attempts. Please try again after 10 minutes.'
             ], 429);
         }
-        if (Auth::attempt(['email' => $request->email, 'password' => $request->password])) {
+        if (Auth::attempt(['email' => $email, 'password' => $request->password])) {
             RateLimiter::clear($key); // reset after success
             $user = Auth::user();
             $token = $user->createToken('LaravelPassportToken')->accessToken;

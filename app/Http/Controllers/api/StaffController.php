@@ -42,7 +42,8 @@ class StaffController extends Controller
             'profile_image',
             'role',
             'gst_number',
-            'pan_number'
+            'pan_number',
+            'staff_type'
         )
             ->where('role', 'staff')
             ->where('branch_id', $userBranchId)
@@ -77,6 +78,7 @@ class StaffController extends Controller
                 'phone'             => $customer->phone,
                 'gst_number'        => $customer->gst_number,
                 'pan_number'        => $customer->pan_number,
+                'staff_type'        => $customer->staff_type,
                 'profile_image'     => $customer->profile_image,
                 'profile_image_url' => $customer->profile_image_url,
                 'country'           => $details->country ?? '',
@@ -190,6 +192,7 @@ class StaffController extends Controller
         $customer->gst_number    = $request->gst_number;
         $customer->pan_number    = $request->pan_number;
         $customer->haspermission = $request->permission_type;
+        $customer->staff_type    = $request->staff_type;
         $customer->password      = Hash::make($request->password);
         $customer->branch_id     = $userBranchId;
         $customer->role          = 'staff';
@@ -372,6 +375,7 @@ class StaffController extends Controller
             $customer->gst_number    = $request->gst_number;
             $customer->pan_number    = $request->pan_number;
             $customer->haspermission = $request->permission_type;
+            $customer->staff_type    = $request->staff_type;
             $customer->role          = 'staff';
 
             if ($request->filled('password')) {

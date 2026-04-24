@@ -324,7 +324,7 @@ Route::middleware(['auth.api'])->group(function () {
     Route::get('/getStaff/{id}', [StaffController::class, 'getStaff'])->name('getCustomer');
     Route::post('/updateStaff/{id}', [StaffController::class, 'updateStaff'])->name('updateCustomer');
     Route::get('getAllStaff', [StaffController::class, 'getAllStaff'])->name('getAllCustomer');
-    // Route::get('/customer-view/{id}/data', [CustomerController::class, 'getCustomerData']);
+    Route::get('staff/today-productions', [ManufacturingController::class, 'staffTodayProductions']);
     Route::get('staff/{id}', [StaffController::class, 'getStaffProfile']);
     Route::get('modules', [StaffController::class, 'index']);
 
