@@ -340,7 +340,13 @@ class AuthController extends Controller
     public function profile()
     {
         $user = auth()->user();
-        return view('profile', compact('user'));
+        // Generate a fresh API token for staff so the production modal
+        // can call the API without relying on localStorage timing.
+        $apiToken = null;
+        if ($user && $user->role === 'staff') {
+            $apiToken = $user->createToken('StaffProfileToken')->accessToken;
+        }
+        return view('profile', compact('user', 'apiToken'));
     }
     public function taxrates()
     {

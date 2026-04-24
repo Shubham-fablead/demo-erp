@@ -111,7 +111,7 @@
 
                         </div>
                     </div>
-                    <div class="col-lg-6 col-12">
+                    <div class="col-lg-3 col-sm-6 col-6">
                         <div class="form-group">
                             <label>Address</label>
                             <textarea id="address" name="address" class="form-control"></textarea>
@@ -119,7 +119,23 @@
 
                         </div>
                     </div>
-                    <div class="col-lg-6">
+
+                    <!-- Staff Type -->
+                    <div class="col-lg-3 col-sm-6 col-6">
+                        <div class="form-group">
+                            <label>Staff Type</label>
+                            <select name="staff_type" id="staff_type" class="form-control">
+                                <option value="">-- Select Staff Type --</option>
+                                <option value="raw_material">Raw Material</option>
+                                <option value="product">Product</option>
+                                <option value="other">Other</option>
+                            </select>
+                            <span class="text-danger error-staff_type"></span>
+                        </div>
+                    </div>
+
+                    <!-- Photo -->
+                    <div class="col-lg-3 col-sm-6 col-6">
                         <div class="form-group">
                             <label>Photo</label>
                             <div class="image-upload">
@@ -271,6 +287,7 @@
                         $("#phone").val(customer.phone);
                         $("#gst_number").val(customer.gst_number);
                         $("#pan_number").val(customer.pan_number);
+                        $("#staff_type").val(customer.staff_type || "");
                         $("#country").val(customer.details.country ||
                             ""); // Use empty string if country is null
                         $("#city").val(customer.details.city || ""); // Use empty string if city is null
@@ -463,6 +480,7 @@
                 formData.append("phone", $("#phone").val());
                 formData.append("gst_number", $("#gst_number").val());
                 formData.append("pan_number", $("#pan_number").val());
+                formData.append("staff_type", $("#staff_type").val());
                 formData.append("country", $("#country").val());
                 formData.append("city", $("#city").val());
                 formData.append("address", $("#address").val());

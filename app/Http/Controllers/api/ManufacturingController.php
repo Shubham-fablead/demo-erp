@@ -433,6 +433,62 @@ class ManufacturingController extends Controller
         ]);
     }
 
+    /**
+     * Returns today's (or tomorrow's for raw_material staff) productions
+     * with their raw material items — used for the staff login modal.
+     */
+    public function staffTodayProductions(Request $request)
+    {
+        $user     = Auth::guard('api')->user();
+        $branchId = $this->resolveBranchId($request);
+
+        // Raw-material staff see tomorrow's productions so they can prepare
+        $isRawMaterial = ($user && $user->staff_type === 'raw_material');
+        $date = $isRawMaterial
+            ? Carbon::tomorrow('Asia/Kolkata')->toDateString()
+            : Carbon::today('Asia/Kolkata')->toDateString();
+
+        $productions = Production::with([
+            'product:id,name,unit_id',
+            'product.unit:id,unit_name',
+            'items.rawMaterial:id,row_materialname,unit_id',
+            'items.rawMaterial.unit:id,unit_name',
+        ])
+            ->where('branch_id', $branchId)
+            ->whereDate('production_date', $date)
+            ->get()
+            ->map(function ($p) {
+                return [
+                    'id'             => $p->id,
+                    'production_no'  => $p->production_no,
+                    'product_name'   => $p->product->name ?? '—',
+                    'product_unit'   => $p->product->unit->unit_name ?? '',
+                    'production_qty' => $p->production_qty,
+                    'output_qty'     => $p->output_qty,
+                    'total_cost'     => $p->total_cost,
+                    'status'         => $p->status,
+                    'production_date'=> $p->production_date?->format('d M Y'),
+                    'notes'          => $p->notes,
+                    'raw_materials'  => $p->items->map(function ($item) {
+                        return [
+                            'name'         => $item->rawMaterial->row_materialname ?? '—',
+                            'unit'         => $item->rawMaterial->unit->unit_name ?? '',
+                            'required_qty' => $item->required_qty,
+                            'consume_qty'  => $item->consume_qty,
+                        ];
+                    }),
+                ];
+            });
+
+        return response()->json([
+            'status'         => true,
+            'date'           => $date,
+            'is_tomorrow'    => $isRawMaterial,
+            'staff_type'     => $user->staff_type ?? null,
+            'productions'    => $productions,
+        ]);
+    }
+
     public function productionList(Request $request)
     {
         $branchId = $this->resolveBranchId($request);

@@ -1286,7 +1286,7 @@
                                     width: '600px',
                                 }).then(function(result) {
                                     if (result.isConfirmed) {
-                                        window.location.href = '/product';
+                                        window.location.href = '/products';
                                     }
                                 });
                             }

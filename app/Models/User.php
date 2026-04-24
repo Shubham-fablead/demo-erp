@@ -32,6 +32,7 @@ class User extends Authenticatable
         'isDeleted',
         'profile_image',
         'haspermission',
+        'staff_type',
         'created_by',
     ];
 
